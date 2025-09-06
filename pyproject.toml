@@ -1,0 +1,70 @@
+[project]
+name = "runpod-cloud-music"
+version = "0.1.0"
+description = "MusicGen batch processing system for RunPod L40S GPU pods"
+authors = [
+    { name = "RunPod MusicGen", email = "noreply@example.com" }
+]
+readme = "README.md"
+requires-python = ">=3.8"
+dependencies = [
+    "boto3>=1.28.0",
+    "torch>=2.0.0",
+    "transformers>=4.30.0", 
+    "soundfile>=0.12.0",
+    "numpy>=1.24.0",
+    "python-dotenv>=1.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "black>=23.0.0",
+    "flake8>=6.0.0",
+]
+
+[project.scripts]
+musicgen-worker = "src.worker:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv]
+# UV-specific configuration
+dev-dependencies = [
+    "pytest>=7.0.0",
+    "black>=23.0.0", 
+    "flake8>=6.0.0",
+]
+
+# Specify Python version preference for uv
+python-preference = "managed"
+
+[tool.black]
+line-length = 88
+target-version = ['py38']
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  # directories
+  \.eggs
+  | \.git
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | build
+  | dist
+)/
+'''
+
+[tool.flake8]
+max-line-length = 88
+extend-ignore = ["E203", "W503"]
+exclude = [
+    ".git",
+    "__pycache__",
+    ".venv",
+    "build",
+    "dist",
+]

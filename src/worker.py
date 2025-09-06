@@ -69,6 +69,9 @@ class MusicGenWorker:
     """Main worker class for music generation"""
     
     def __init__(self):
+        # Validate AWS environment variables first
+        self._validate_aws_environment()
+        
         # Configuration from environment variables (loaded from .env file)
         self.s3_bucket = os.getenv('MUSICGEN_S3_BUCKET')
         self.aws_region = os.getenv('AWS_DEFAULT_REGION') or os.getenv('AWS_REGION', 'us-east-1')
@@ -88,12 +91,11 @@ class MusicGenWorker:
             }
             self.hourly_cost_usd = pricing.get(instance_type, 0.40)
         
-        # Validate configuration
-        if not self.s3_bucket:
-            raise ValueError("S3 bucket not configured. Set MUSICGEN_S3_BUCKET in .env file")
-        
-        # Initialize AWS clients
+        # Initialize AWS clients - boto3 will use environment credentials
         self.s3_client = boto3.client('s3', region_name=self.aws_region)
+        
+        # Validate S3 connectivity and bucket access
+        self._validate_s3_access()
         
         # Model variables (initialized later)
         self.model = None
@@ -105,35 +107,314 @@ class MusicGenWorker:
         
         logger.info(f"Worker initialized - S3 bucket: {self.s3_bucket}, Hourly cost: ${self.hourly_cost_usd:.2f}")
     
+    def _validate_aws_environment(self) -> None:
+        """Validate required AWS environment variables are present"""
+        logger.info("Validating AWS environment variables...")
+        
+        required_vars = [
+            'AWS_ACCESS_KEY_ID',
+            'AWS_SECRET_ACCESS_KEY', 
+            'MUSICGEN_S3_BUCKET',
+            'AWS_DEFAULT_REGION'
+        ]
+        
+        missing_vars = []
+        for var in required_vars:
+            value = os.getenv(var)
+            if not value:
+                # Try alternative names for region
+                if var == 'AWS_DEFAULT_REGION' and os.getenv('AWS_REGION'):
+                    continue
+                missing_vars.append(var)
+            else:
+                logger.info(f"✅ {var}: {'*' * min(8, len(value))}...")
+        
+        if missing_vars:
+            logger.error("❌ Missing required AWS environment variables:")
+            for var in missing_vars:
+                logger.error(f"  - {var}")
+            
+            if 'AWS_DEFAULT_REGION' in missing_vars and not os.getenv('AWS_REGION'):
+                logger.error("    (AWS_DEFAULT_REGION or AWS_REGION must be set)")
+            
+            logger.error("\nEnsure these variables are set in your environment:")
+            logger.error("- Locally: Add to .env file") 
+            logger.error("- RunPod: Set via deployment script or SSH export commands")
+            logger.error("- AWS: Use 'aws configure' or IAM role credentials")
+            
+            raise ValueError(f"Missing AWS environment variables: {', '.join(missing_vars)}")
+        
+        # Validate S3 bucket name format
+        s3_bucket = os.getenv('MUSICGEN_S3_BUCKET')
+        if not self._is_valid_s3_bucket_name(s3_bucket):
+            raise ValueError(f"Invalid S3 bucket name: {s3_bucket}")
+        
+        logger.info("✅ AWS environment validation passed")
+    
+    def _is_valid_s3_bucket_name(self, bucket_name: str) -> bool:
+        """Validate S3 bucket name follows AWS naming rules"""
+        if not bucket_name:
+            return False
+        
+        # Basic validation rules
+        if len(bucket_name) < 3 or len(bucket_name) > 63:
+            return False
+        
+        if bucket_name.startswith('-') or bucket_name.endswith('-'):
+            return False
+        
+        if '..' in bucket_name:
+            return False
+        
+        # Check for valid characters (simplified)
+        import re
+        if not re.match(r'^[a-z0-9.-]+$', bucket_name):
+            return False
+        
+        return True
+    
+    def _validate_s3_access(self) -> None:
+        """Validate S3 connectivity and bucket access"""
+        logger.info("Validating S3 connectivity and bucket access...")
+        
+        try:
+            # Test basic S3 connectivity by listing buckets
+            logger.info("Testing S3 connectivity...")
+            response = self.s3_client.list_buckets()
+            logger.info(f"✅ S3 connection successful - Found {len(response['Buckets'])} buckets")
+            
+        except ClientError as e:
+            error_code = e.response['Error']['Code']
+            error_message = e.response['Error']['Message']
+            
+            if error_code == 'InvalidAccessKeyId':
+                logger.error("❌ S3 connection failed: Invalid AWS Access Key ID")
+                logger.error("Check AWS_ACCESS_KEY_ID environment variable")
+            elif error_code == 'SignatureDoesNotMatch':
+                logger.error("❌ S3 connection failed: Invalid AWS Secret Access Key") 
+                logger.error("Check AWS_SECRET_ACCESS_KEY environment variable")
+            elif error_code == 'TokenRefreshRequired':
+                logger.error("❌ S3 connection failed: AWS session token expired")
+                logger.error("Refresh your AWS credentials")
+            else:
+                logger.error(f"❌ S3 connection failed: {error_code} - {error_message}")
+            
+            raise ValueError(f"S3 connection failed: {error_code}")
+            
+        except Exception as e:
+            logger.error(f"❌ S3 connection failed with unexpected error: {e}")
+            raise ValueError(f"S3 connection failed: {str(e)}")
+        
+        # Test bucket-specific access
+        try:
+            logger.info(f"Testing bucket access: {self.s3_bucket}")
+            
+            # Check if bucket exists and we can access it
+            self.s3_client.head_bucket(Bucket=self.s3_bucket)
+            logger.info(f"✅ Bucket {self.s3_bucket} exists and is accessible")
+            
+            # Test write permissions with a small test object
+            test_key = "musicgen_write_test.txt"
+            test_content = "MusicGen write test"
+            
+            logger.info("Testing bucket write permissions...")
+            self.s3_client.put_object(
+                Bucket=self.s3_bucket,
+                Key=test_key, 
+                Body=test_content,
+                ContentType='text/plain'
+            )
+            
+            # Clean up test object
+            self.s3_client.delete_object(Bucket=self.s3_bucket, Key=test_key)
+            logger.info(f"✅ Bucket {self.s3_bucket} write permissions confirmed")
+            
+        except ClientError as e:
+            error_code = e.response['Error']['Code']
+            error_message = e.response['Error']['Message']
+            
+            if error_code == 'NoSuchBucket':
+                logger.error(f"❌ S3 bucket does not exist: {self.s3_bucket}")
+                logger.error("Create the bucket in AWS S3 console or check bucket name")
+            elif error_code == 'AccessDenied':
+                logger.error(f"❌ Access denied to S3 bucket: {self.s3_bucket}")
+                logger.error("Check bucket permissions and AWS credentials")
+            elif error_code == 'AllAccessDisabled':
+                logger.error(f"❌ All access disabled for bucket: {self.s3_bucket}")
+                logger.error("Check bucket policy and AWS account permissions")
+            else:
+                logger.error(f"❌ S3 bucket access failed: {error_code} - {error_message}")
+            
+            raise ValueError(f"S3 bucket access failed: {error_code}")
+            
+        except Exception as e:
+            logger.error(f"❌ S3 bucket validation failed: {e}")
+            raise ValueError(f"S3 bucket validation failed: {str(e)}")
+        
+        logger.info("✅ S3 connectivity and bucket validation passed")
+    
     def initialize_model(self) -> None:
         """Initialize the MusicGen model and move it to GPU"""
         try:
             logger.info("Initializing MusicGen model...")
             
+            # Check system requirements first
+            self._validate_model_requirements()
+            
             # Check for CUDA availability
             if torch.cuda.is_available():
                 self.device = torch.device("cuda")
                 logger.info(f"Using GPU: {torch.cuda.get_device_name()}")
+                
+                # Check GPU memory
+                gpu_memory = torch.cuda.get_device_properties(0).total_memory / 1024**3
+                logger.info(f"GPU memory available: {gpu_memory:.1f} GB")
+                
+                if gpu_memory < 6.0:
+                    logger.warning(f"GPU memory ({gpu_memory:.1f} GB) may be insufficient for MusicGen-medium (requires ~6GB)")
             else:
                 self.device = torch.device("cpu")
                 logger.warning("CUDA not available, using CPU (will be very slow)")
             
-            # Load model and processor
+            # Load model and processor with progress tracking
             model_name = "facebook/musicgen-medium"
             logger.info(f"Loading {model_name}...")
+            logger.info("This may take several minutes on first run (downloading ~6GB model)...")
             
-            self.processor = AutoProcessor.from_pretrained(model_name)
-            self.model = MusicgenForConditionalGeneration.from_pretrained(model_name)
-            self.model.to(self.device)
-            
-            # Set model to evaluation mode
-            self.model.eval()
-            
-            logger.info("✅ Model initialization complete")
-            
+            try:
+                logger.info("Loading processor...")
+                start_time = time.time()
+                self.processor = AutoProcessor.from_pretrained(model_name)
+                processor_time = time.time() - start_time
+                logger.info(f"✅ Processor loaded successfully ({processor_time:.1f}s)")
+                
+                logger.info("Loading model (this is the large download)...")
+                logger.info("📥 Download progress will be shown by transformers library...")
+                model_start_time = time.time()
+                
+                self.model = MusicgenForConditionalGeneration.from_pretrained(model_name)
+                
+                model_load_time = time.time() - model_start_time
+                logger.info(f"✅ Model loaded successfully ({model_load_time:.1f}s)")
+                
+                if model_load_time < 30:
+                    logger.info("🚀 Fast load time - model was cached locally")
+                elif model_load_time < 300:
+                    logger.info("📥 Model loaded from cache or fast download")
+                else:
+                    logger.info("📥 Model downloaded from internet (first run)")
+                
+                logger.info("Moving model to device...")
+                device_start_time = time.time()
+                self.model.to(self.device)
+                device_time = time.time() - device_start_time
+                logger.info(f"✅ Model moved to {self.device} ({device_time:.1f}s)")
+                
+                # Set model to evaluation mode
+                self.model.eval()
+                
+                # Verify model is working with a test
+                logger.info("Verifying model functionality...")
+                self._test_model_functionality()
+                
+                total_init_time = time.time() - start_time
+                logger.info(f"✅ Model initialization complete and verified (total: {total_init_time:.1f}s)")
+                
+            except Exception as e:
+                logger.error(f"Model loading failed: {str(e)}")
+                if "out of memory" in str(e).lower():
+                    logger.error("GPU out of memory - try using a GPU with more VRAM")
+                elif "connection" in str(e).lower() or "timeout" in str(e).lower():
+                    logger.error("Network issue downloading model - check internet connection")
+                elif "disk" in str(e).lower() or "space" in str(e).lower():
+                    logger.error("Insufficient disk space - model requires ~6GB storage")
+                raise
+                
         except Exception as e:
             logger.error(f"Failed to initialize model: {e}")
             raise
+    
+    def _validate_model_requirements(self) -> None:
+        """Validate system requirements for MusicGen model"""
+        logger.info("Validating system requirements for MusicGen...")
+        
+        # Check available disk space
+        import shutil
+        
+        # Check space in current directory (or cache directory)
+        cache_dir = os.path.expanduser("~/.cache/huggingface")
+        try:
+            if os.path.exists(cache_dir):
+                total, used, free = shutil.disk_usage(cache_dir)
+                free_gb = free / (1024**3)
+                logger.info(f"Available disk space: {free_gb:.1f} GB")
+                
+                if free_gb < 10.0:  # Need space for model + some buffer
+                    logger.warning(f"Low disk space ({free_gb:.1f} GB). Model requires ~6GB plus working space")
+                    if free_gb < 6.0:
+                        raise ValueError(f"Insufficient disk space: {free_gb:.1f} GB available, need at least 6GB")
+            else:
+                logger.info("Cache directory doesn't exist yet, will be created during model download")
+                
+        except Exception as e:
+            logger.warning(f"Could not check disk space: {e}")
+        
+        # Check if model is already cached
+        model_name = "facebook/musicgen-medium"
+        try:
+            from transformers import AutoConfig
+            config = AutoConfig.from_pretrained(model_name, local_files_only=True)
+            logger.info("✅ Model found in local cache - no download required")
+            
+            # Verify cache integrity
+            cache_path = os.path.expanduser("~/.cache/huggingface/hub")
+            if os.path.exists(cache_path):
+                import glob
+                model_files = glob.glob(os.path.join(cache_path, "*musicgen*", "*", "*.bin")) + \
+                             glob.glob(os.path.join(cache_path, "*musicgen*", "*", "*.safetensors"))
+                
+                if model_files:
+                    total_size = sum(os.path.getsize(f) for f in model_files if os.path.exists(f))
+                    size_gb = total_size / (1024**3)
+                    logger.info(f"📦 Cached model size: {size_gb:.1f} GB")
+                    
+                    if size_gb < 5.0:  # MusicGen-medium should be ~6GB
+                        logger.warning(f"⚠️  Cached model seems incomplete ({size_gb:.1f} GB), may need to re-download")
+                else:
+                    logger.warning("⚠️  Model config found but model files missing, will re-download")
+                    
+        except Exception as e:
+            logger.info("Model not in cache - will download on first run (~6GB)")
+            logger.info("This may take 5-15 minutes depending on your internet connection")
+        
+        logger.info("✅ System requirements validation passed")
+    
+    def _test_model_functionality(self) -> None:
+        """Test model with a simple generation to verify it's working"""
+        try:
+            logger.info("Running model functionality test...")
+            
+            # Simple test generation (very short)
+            test_prompt = "test"
+            inputs = self.processor(
+                text=[test_prompt],
+                padding=True,
+                return_tensors="pt"
+            ).to(self.device)
+            
+            # Generate just a few tokens as a test
+            with torch.no_grad():
+                audio_values = self.model.generate(**inputs, max_new_tokens=10)
+            
+            # Verify we got output
+            if audio_values is not None and len(audio_values) > 0:
+                logger.info("✅ Model functionality test passed")
+            else:
+                raise ValueError("Model test generated no output")
+                
+        except Exception as e:
+            logger.error(f"Model functionality test failed: {e}")
+            raise ValueError(f"Model is not working correctly: {str(e)}")
     
     def parse_prompts_file(self, filepath: str = "prompts.txt") -> List[Tuple[str, int, str]]:
         """
@@ -489,6 +770,107 @@ class MusicGenWorker:
             logger.error(f"Failed to upload cost report: {e}")
             return False
     
+    def generate_detailed_completion_report(self) -> str:
+        """Generate detailed completion report with all files and metrics"""
+        successful_results = [r for r in self.job_results if r.success]
+        failed_results = [r for r in self.job_results if not r.success]
+        
+        total_time = sum(r.generation_time_s for r in successful_results)
+        total_cost = sum(r.estimated_cost_usd for r in successful_results)
+        
+        report_lines = []
+        report_lines.append("🎵 MUSICGEN BATCH COMPLETION REPORT")
+        report_lines.append("=" * 80)
+        report_lines.append(f"⏰ Completed at: {time.strftime('%Y-%m-%d %H:%M:%S UTC')}")
+        report_lines.append(f"📊 Jobs processed: {len(self.job_results)} total")
+        report_lines.append(f"✅ Successful: {len(successful_results)}")
+        report_lines.append(f"❌ Failed: {len(failed_results)}")
+        report_lines.append(f"⏱️  Total generation time: {total_time:.1f}s ({total_time/60:.1f} minutes)")
+        report_lines.append(f"💰 Estimated total cost: ${total_cost:.4f}")
+        report_lines.append(f"🗂️  S3 bucket: {self.s3_bucket}")
+        
+        if successful_results:
+            report_lines.append("\n" + "=" * 80)
+            report_lines.append("📁 SUCCESSFULLY GENERATED FILES:")
+            report_lines.append("=" * 80)
+            
+            # Calculate average generation time
+            avg_time = total_time / len(successful_results)
+            report_lines.append(f"Average generation time: {avg_time:.1f}s per file")
+            report_lines.append("")
+            
+            # List all successful files with details
+            for i, result in enumerate(successful_results, 1):
+                duration_text = f"{result.requested_duration_s}s"
+                time_text = f"{result.generation_time_s:.1f}s"
+                cost_text = f"${result.estimated_cost_usd:.4f}"
+                
+                report_lines.append(f"{i:2d}. 📄 {result.s3_filename}")
+                report_lines.append(f"     Prompt: {result.prompt[:100]}{'...' if len(result.prompt) > 100 else ''}")
+                report_lines.append(f"     Duration: {duration_text} | Generation time: {time_text} | Cost: {cost_text}")
+                report_lines.append("")
+        
+        if failed_results:
+            report_lines.append("=" * 80)
+            report_lines.append("❌ FAILED JOBS:")
+            report_lines.append("=" * 80)
+            
+            for i, result in enumerate(failed_results, 1):
+                report_lines.append(f"{i:2d}. ❌ {result.s3_filename}")
+                report_lines.append(f"     Prompt: {result.prompt[:100]}{'...' if len(result.prompt) > 100 else ''}")
+                report_lines.append(f"     Error: {result.error_message or 'Unknown error'}")
+                report_lines.append(f"     Partial generation time: {result.generation_time_s:.1f}s")
+                report_lines.append("")
+        
+        # Performance metrics
+        if successful_results:
+            report_lines.append("=" * 80)
+            report_lines.append("📈 PERFORMANCE METRICS:")
+            report_lines.append("=" * 80)
+            
+            # Group by duration for analysis
+            duration_groups = {}
+            for result in successful_results:
+                duration = result.requested_duration_s
+                if duration not in duration_groups:
+                    duration_groups[duration] = []
+                duration_groups[duration].append(result)
+            
+            for duration in sorted(duration_groups.keys()):
+                results = duration_groups[duration]
+                avg_gen_time = sum(r.generation_time_s for r in results) / len(results)
+                total_files = len(results)
+                
+                report_lines.append(f"{duration:2d}s audio: {total_files} files, avg generation time: {avg_gen_time:.1f}s")
+            
+            # Efficiency metrics
+            total_audio_duration = sum(r.requested_duration_s for r in successful_results)
+            efficiency_ratio = total_audio_duration / total_time if total_time > 0 else 0
+            
+            report_lines.append("")
+            report_lines.append(f"Total audio generated: {total_audio_duration}s ({total_audio_duration/60:.1f} minutes)")
+            report_lines.append(f"Generation efficiency: {efficiency_ratio:.2f}x real-time")
+            report_lines.append(f"Cost per second of audio: ${total_cost/total_audio_duration:.6f}" if total_audio_duration > 0 else "")
+        
+        report_lines.append("\n" + "=" * 80)
+        report_lines.append("📋 S3 UPLOAD SUMMARY:")
+        report_lines.append("=" * 80)
+        report_lines.append(f"S3 Bucket: s3://{self.s3_bucket}/")
+        report_lines.append("Files uploaded:")
+        
+        for result in successful_results:
+            report_lines.append(f"  • {result.s3_filename}")
+        
+        if len(successful_results) > 0:
+            report_lines.append(f"\nCost report: cost_report_latest.csv")
+            report_lines.append(f"Total S3 objects created: {len(successful_results) + 1}")  # +1 for cost report
+        
+        report_lines.append("\n" + "=" * 80)
+        report_lines.append("🎵 END OF COMPLETION REPORT")
+        report_lines.append("=" * 80)
+        
+        return "\n".join(report_lines)
+    
     def run(self) -> None:
         """Main worker execution loop"""
         try:
@@ -528,19 +910,13 @@ class MusicGenWorker:
             logger.info("\n📊 Generating final cost report...")
             report_success = self.upload_cost_report()
             
-            # Summary
-            successful_jobs = len([r for r in self.job_results if r.success])
-            total_cost = sum(r.estimated_cost_usd for r in self.job_results if r.success)
-            total_time = sum(r.generation_time_s for r in self.job_results if r.success)
+            # Generate and display detailed completion report
+            detailed_report = self.generate_detailed_completion_report()
+            logger.info(f"\n{detailed_report}")
             
-            logger.info("\n" + "="*60)
-            logger.info("🎵 MUSICGEN WORKER COMPLETED")
-            logger.info("="*60)
-            logger.info(f"✅ Successful jobs: {successful_jobs}/{len(jobs)}")
-            logger.info(f"⏱️  Total generation time: {total_time:.1f}s ({total_time/60:.1f}m)")
-            logger.info(f"💰 Estimated total cost: ${total_cost:.3f}")
+            # Add cost report status to the completion summary
+            successful_jobs = len([r for r in self.job_results if r.success])
             logger.info(f"📊 Cost report uploaded: {'✅' if report_success else '❌'}")
-            logger.info("="*60)
             
             # Exit with error code if some jobs failed
             failed_jobs = len(jobs) - successful_jobs
