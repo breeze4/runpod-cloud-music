@@ -40,11 +40,13 @@ def check_ssh_connection():
     """Test SSH connection to RunPod"""
     host = os.getenv('RUNPOD_HOST')
     user = os.getenv('RUNPOD_USER', 'root')
+    port = os.getenv('RUNPOD_PORT', '22')
     
     try:
         result = subprocess.run([
             'ssh', '-o', 'ConnectTimeout=5', 
             '-o', 'StrictHostKeyChecking=no',
+            '-p', port,
             f'{user}@{host}', 
             'echo "Connection OK"'
         ], capture_output=True, text=True, timeout=10)
@@ -58,8 +60,9 @@ def monitor_worker_logs():
     """Monitor worker logs in real-time"""
     host = os.getenv('RUNPOD_HOST')
     user = os.getenv('RUNPOD_USER', 'root')
+    port = os.getenv('RUNPOD_PORT', '22')
     
-    print(f"🔍 Monitoring MusicGen worker logs on {host}")
+    print(f"🔍 Monitoring MusicGen worker logs on {host}:{port}")
     print("Press Ctrl+C to stop monitoring")
     print("="*60)
     
@@ -75,7 +78,7 @@ def monitor_worker_logs():
     for location in log_locations:
         try:
             result = subprocess.run([
-                'ssh', f'{user}@{host}', 
+                'ssh', '-p', port, f'{user}@{host}', 
                 f'test -f {location} && echo "exists"'
             ], capture_output=True, text=True, timeout=5)
             
@@ -95,6 +98,7 @@ def monitor_worker_logs():
         # Start tailing the log file
         cmd = [
             'ssh', '-o', 'StrictHostKeyChecking=no',
+            '-p', port,
             f'{user}@{host}', 
             f'tail -f {log_file} 2>/dev/null || tail -f ~/musicgen-worker.log 2>/dev/null || echo "No log file found. Worker may not be running yet."'
         ]

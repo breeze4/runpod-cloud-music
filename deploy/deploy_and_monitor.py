@@ -72,6 +72,7 @@ def start_worker():
     """Start the MusicGen worker on the pod"""
     host = os.getenv('RUNPOD_HOST')
     user = os.getenv('RUNPOD_USER', 'root')
+    port = os.getenv('RUNPOD_PORT', '22')
     
     print("\n🎵 STEP 2: STARTING MUSICGEN WORKER")
     print("="*50)
@@ -94,6 +95,7 @@ echo "Worker started with PID $(cat worker.pid)"
         
         result = subprocess.run([
             'ssh', '-o', 'StrictHostKeyChecking=no',
+            '-p', port,
             f'{user}@{host}', start_command
         ], capture_output=True, text=True, timeout=30)
         
@@ -103,7 +105,7 @@ echo "Worker started with PID $(cat worker.pid)"
             
             # Get PID
             pid_result = subprocess.run([
-                'ssh', f'{user}@{host}', 'cat /workspace/worker.pid 2>/dev/null || echo "unknown"'
+                'ssh', '-p', port, f'{user}@{host}', 'cat /workspace/worker.pid 2>/dev/null || echo "unknown"'
             ], capture_output=True, text=True, timeout=5)
             
             worker_pid = pid_result.stdout.strip() if pid_result.returncode == 0 else "unknown"
@@ -120,6 +122,7 @@ def monitor_worker(worker_pid):
     """Monitor the worker process and logs"""
     host = os.getenv('RUNPOD_HOST')
     user = os.getenv('RUNPOD_USER', 'root')
+    port = os.getenv('RUNPOD_PORT', '22')
     
     print(f"\n👀 STEP 3: MONITORING WORKER (PID: {worker_pid})")
     print("="*50)
@@ -165,6 +168,7 @@ tail -20 worker_output.log 2>/dev/null || echo "No worker output found"
         
         process = subprocess.Popen([
             'ssh', '-o', 'StrictHostKeyChecking=no',
+            '-p', port,
             f'{user}@{host}', monitor_command
         ], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, 
            universal_newlines=True)
@@ -192,6 +196,7 @@ def show_completion_summary():
     """Show final completion summary"""
     host = os.getenv('RUNPOD_HOST')
     user = os.getenv('RUNPOD_USER', 'root')
+    port = os.getenv('RUNPOD_PORT', '22')
     
     print("\n📊 STEP 4: COMPLETION SUMMARY")
     print("="*50)
@@ -206,7 +211,7 @@ def show_completion_summary():
         
         for i, cmd in enumerate(summary_commands, 1):
             result = subprocess.run([
-                'ssh', f'{user}@{host}', cmd
+                'ssh', '-p', port, f'{user}@{host}', cmd
             ], capture_output=True, text=True, timeout=10)
             
             if result.returncode == 0 and result.stdout.strip():
@@ -247,7 +252,8 @@ def main():
         # Load environment
         load_environment()
         host = os.getenv('RUNPOD_HOST')
-        print(f"Target: {host}")
+        port = os.getenv('RUNPOD_PORT', '22')
+    print(f"Target: {host}:{port}")
         print()
         
         # Step 1: Deploy

@@ -42,11 +42,13 @@ def check_ssh_connection():
     """Test SSH connection to RunPod"""
     host = os.getenv('RUNPOD_HOST')
     user = os.getenv('RUNPOD_USER', 'root')
+    port = os.getenv('RUNPOD_PORT', '22')
     
     try:
         result = subprocess.run([
             'ssh', '-o', 'ConnectTimeout=5', 
             '-o', 'StrictHostKeyChecking=no',
+            '-p', port,
             f'{user}@{host}', 
             'echo "Connection OK"'
         ], capture_output=True, text=True, timeout=10)
@@ -60,6 +62,7 @@ def get_system_info():
     """Get current system information"""
     host = os.getenv('RUNPOD_HOST')
     user = os.getenv('RUNPOD_USER', 'root')
+    port = os.getenv('RUNPOD_PORT', '22')
     
     commands = {
         'CPU Usage': "top -bn1 | grep 'Cpu(s)' | awk '{print $2}' | awk -F'%' '{print $1}'",
@@ -73,6 +76,7 @@ def get_system_info():
         try:
             result = subprocess.run([
                 'ssh', '-o', 'StrictHostKeyChecking=no',
+                '-p', port,
                 f'{user}@{host}', cmd
             ], capture_output=True, text=True, timeout=5)
             
@@ -90,8 +94,9 @@ def monitor_system_logs():
     """Monitor system logs in real-time"""
     host = os.getenv('RUNPOD_HOST')
     user = os.getenv('RUNPOD_USER', 'root')
+    port = os.getenv('RUNPOD_PORT', '22')
     
-    print(f"🖥️  Monitoring system resources on {host}")
+    print(f"🖥️  Monitoring system resources on {host}:{port}")
     print("Press Ctrl+C to stop monitoring")
     print("="*80)
     
@@ -100,7 +105,7 @@ def monitor_system_logs():
             # Clear screen
             os.system('clear' if os.name == 'posix' else 'cls')
             
-            print(f"🖥️  System Monitor - {host}")
+            print(f"🖥️  System Monitor - {host}:{port}")
             print(f"⏰ {time.strftime('%Y-%m-%d %H:%M:%S')}")
             print("="*80)
             
@@ -132,6 +137,7 @@ def monitor_system_logs():
             try:
                 result = subprocess.run([
                     'ssh', '-o', 'StrictHostKeyChecking=no',
+                    '-p', port,
                     f'{user}@{host}', 
                     "ps aux | grep -E '(python|uv|musicgen)' | grep -v grep | head -5"
                 ], capture_output=True, text=True, timeout=5)

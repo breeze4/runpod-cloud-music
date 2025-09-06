@@ -40,11 +40,13 @@ def check_ssh_connection():
     """Test SSH connection to RunPod"""
     host = os.getenv('RUNPOD_HOST')
     user = os.getenv('RUNPOD_USER', 'root')
+    port = os.getenv('RUNPOD_PORT', '22')
     
     try:
         result = subprocess.run([
             'ssh', '-o', 'ConnectTimeout=5', 
             '-o', 'StrictHostKeyChecking=no',
+            '-p', port,
             f'{user}@{host}', 
             'echo "Connection OK"'
         ], capture_output=True, text=True, timeout=10)
@@ -58,10 +60,12 @@ def run_remote_command(command, timeout=10):
     """Run a command on the remote pod"""
     host = os.getenv('RUNPOD_HOST')
     user = os.getenv('RUNPOD_USER', 'root')
+    port = os.getenv('RUNPOD_PORT', '22')
     
     try:
         result = subprocess.run([
             'ssh', '-o', 'StrictHostKeyChecking=no',
+            '-p', port,
             f'{user}@{host}', command
         ], capture_output=True, text=True, timeout=timeout)
         
@@ -242,7 +246,8 @@ def main():
         load_environment()
         
         host = os.getenv('RUNPOD_HOST')
-        print(f"Checking GPU on: {host}")
+        port = os.getenv('RUNPOD_PORT', '22')
+        print(f"Checking GPU on: {host}:{port}")
         print()
         
         if not check_ssh_connection():

@@ -42,13 +42,15 @@ def check_ssh_connection():
     """Test SSH connection to RunPod"""
     host = os.getenv('RUNPOD_HOST')
     user = os.getenv('RUNPOD_USER', 'root')
+    port = os.getenv('RUNPOD_PORT', '22')
     
-    print(f"Testing SSH connection to {user}@{host}...")
+    print(f"Testing SSH connection to {user}@{host}:{port}...")
     
     try:
         result = subprocess.run([
             'ssh', '-o', 'ConnectTimeout=10', 
             '-o', 'StrictHostKeyChecking=no',
+            '-p', port,
             f'{user}@{host}', 
             'echo "SSH connection successful"'
         ], capture_output=True, text=True, timeout=15)
@@ -71,6 +73,7 @@ def sync_code():
     """Sync code files to RunPod using rsync"""
     host = os.getenv('RUNPOD_HOST')
     user = os.getenv('RUNPOD_USER', 'root')
+    port = os.getenv('RUNPOD_PORT', '22')
     
     print("Syncing code to RunPod...")
     
@@ -96,14 +99,14 @@ def sync_code():
     try:
         # Create workspace directory on pod
         subprocess.run([
-            'ssh', f'{user}@{host}', 
+            'ssh', '-p', port, f'{user}@{host}', 
             'mkdir -p /workspace'
         ], check=True)
         
         # Sync files
         cmd = [
             'rsync', '-avz', '--progress',
-            '-e', 'ssh -o StrictHostKeyChecking=no'
+            '-e', f'ssh -p {port} -o StrictHostKeyChecking=no'
         ] + existing_items + [f'{user}@{host}:/workspace/']
         
         result = subprocess.run(cmd, check=True)
@@ -118,6 +121,7 @@ def setup_environment():
     """Set up Python environment and dependencies on pod"""
     host = os.getenv('RUNPOD_HOST')
     user = os.getenv('RUNPOD_USER', 'root')
+    port = os.getenv('RUNPOD_PORT', '22')
     
     print("Setting up Python environment on pod...")
     
@@ -142,7 +146,7 @@ def setup_environment():
         for cmd in commands:
             print(f"Running: {cmd}")
             result = subprocess.run([
-                'ssh', f'{user}@{host}', 
+                'ssh', '-p', port, f'{user}@{host}', 
                 f'cd /workspace && {cmd}'
             ], capture_output=True, text=True)
             
@@ -162,6 +166,7 @@ def configure_aws_environment():
     """Configure AWS environment variables on pod"""
     host = os.getenv('RUNPOD_HOST')
     user = os.getenv('RUNPOD_USER', 'root')
+    port = os.getenv('RUNPOD_PORT', '22')
     
     print("Configuring AWS environment on pod...")
     
@@ -205,13 +210,13 @@ def configure_aws_environment():
         
         # Copy script to pod
         subprocess.run([
-            'scp', '-o', 'StrictHostKeyChecking=no',
+            'scp', '-P', port, '-o', 'StrictHostKeyChecking=no',
             temp_path, f'{user}@{host}:/workspace/setup_env.sh'
         ], check=True)
         
         # Make script executable and source it
         subprocess.run([
-            'ssh', f'{user}@{host}',
+            'ssh', '-p', port, f'{user}@{host}',
             'chmod +x /workspace/setup_env.sh && echo "source /workspace/setup_env.sh" >> ~/.bashrc'
         ], check=True)
         
@@ -234,6 +239,7 @@ def verify_deployment():
     """Verify deployment was successful"""
     host = os.getenv('RUNPOD_HOST')
     user = os.getenv('RUNPOD_USER', 'root')
+    port = os.getenv('RUNPOD_PORT', '22')
     
     print("Verifying deployment...")
     
@@ -249,7 +255,7 @@ def verify_deployment():
     for check_name, command in checks:
         try:
             result = subprocess.run([
-                'ssh', f'{user}@{host}', command
+                'ssh', '-p', port, f'{user}@{host}', command
             ], capture_output=True, text=True, timeout=10)
             
             if result.returncode == 0:
