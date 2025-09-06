@@ -103,13 +103,26 @@ def sync_code():
             'mkdir -p /workspace'
         ], check=True)
         
-        # Sync files
-        cmd = [
-            'rsync', '-avz', '--progress',
-            '-e', f'ssh -p {port} -o StrictHostKeyChecking=no'
-        ] + existing_items + [f'{user}@{host}:/workspace/']
+        # Use SCP instead of rsync for Windows compatibility
+        print("Using SCP for file transfer (Windows compatible)...")
         
-        result = subprocess.run(cmd, check=True)
+        for item in existing_items:
+            print(f"Uploading {item}...")
+            if os.path.isdir(item):
+                # For directories, use scp -r
+                cmd = [
+                    'scp', '-r', '-P', port, '-o', 'StrictHostKeyChecking=no',
+                    item, f'{user}@{host}:/workspace/'
+                ]
+            else:
+                # For files, use regular scp
+                cmd = [
+                    'scp', '-P', port, '-o', 'StrictHostKeyChecking=no',
+                    item, f'{user}@{host}:/workspace/'
+                ]
+            
+            result = subprocess.run(cmd, check=True)
+        
         print("✅ Code sync completed")
         return True
         
