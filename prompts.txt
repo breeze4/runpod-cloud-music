@@ -1,0 +1,19 @@
+# MusicGen Batch Generation Prompts
+# Format: PROMPT_TEXT ; DURATION_IN_SECONDS ; FILE_NAME
+# Lines starting with # are comments and will be ignored
+
+# Example prompts for testing the system
+upbeat electronic dance music with heavy bass ; 30 ; dance_test
+cinematic orchestral music with epic drums and strings ; 45 ; cinematic_short
+relaxing acoustic guitar melody with light percussion ; 60 ; acoustic_relax
+dark ambient soundscape with industrial elements ; 90 ; ambient_dark
+
+# Longer examples for full testing
+#energetic rock anthem with electric guitars and powerful drums ; 180 ; rock_anthem_3min
+#peaceful piano composition with soft string accompaniment ; 240 ; piano_peaceful_4min
+
+# Various genres for comprehensive testing
+#jazz fusion with saxophone and electric piano ; 120 ; jazz_fusion_2min
+#tropical house music with steel drums and synths ; 150 ; tropical_house
+#classical baroque piece with harpsichord and strings ; 180 ; baroque_classical
+#lo-fi hip hop beat with vinyl crackle and mellow bass ; 90 ; lofi_hiphop
