@@ -87,11 +87,6 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 uv sync
 ```
 
-**Alternative (using pip):**
-```bash
-pip install python-dotenv boto3 torch transformers soundfile numpy
-```
-
 ### 2.3 Create Environment File
 
 1. **Copy Template**
@@ -114,11 +109,11 @@ pip install python-dotenv boto3 torch transformers soundfile numpy
 
 ### 2.4 Verify Configuration
 
-1. **Test SSH Connection**
+1. **Test Pod Environment**
    ```bash
-   uv run python deploy/check_gpu.py
+   uv run python deploy/check_pod.py
    ```
-   - Should show GPU information and PyTorch compatibility
+   - Should show comprehensive environment validation including GPU, AWS, and S3
 
 2. **Test AWS Credentials**
    - Use AWS CLI or console to verify S3 bucket access
@@ -231,7 +226,7 @@ python deploy/monitor_system.py
 
 **GPU Status:**
 ```bash
-python deploy/check_gpu.py
+uv run python deploy/check_pod.py
 ```
 
 ### 5.2 Check Progress

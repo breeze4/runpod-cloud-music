@@ -122,8 +122,8 @@ uv run python deploy/monitor_logs.py
 # System logs
 uv run python deploy/monitor_system.py
 
-# GPU utilization
-uv run python deploy/check_gpu.py
+# Pod environment check
+uv run python deploy/check_pod.py
 ```
 
 ## Input Format

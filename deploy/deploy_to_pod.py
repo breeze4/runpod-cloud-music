@@ -236,12 +236,12 @@ def configure_aws_environment():
         return False
 
 def verify_deployment():
-    """Verify deployment was successful"""
+    """Verify deployment was successful with basic checks"""
     host = os.getenv('RUNPOD_HOST')
     user = os.getenv('RUNPOD_USER', 'root')
     port = os.getenv('RUNPOD_PORT', '22')
     
-    print("Verifying deployment...")
+    print("Verifying basic deployment...")
     
     checks = [
         ('Workspace directory', 'ls -la /workspace'),
@@ -271,6 +271,209 @@ def verify_deployment():
     
     return all_passed
 
+def run_comprehensive_validation():
+    """Run comprehensive post-deployment validation using check_pod.py functionality"""
+    host = os.getenv('RUNPOD_HOST')
+    user = os.getenv('RUNPOD_USER', 'root')
+    port = os.getenv('RUNPOD_PORT', '22')
+    
+    print("\n🔍 RUNNING COMPREHENSIVE POST-DEPLOYMENT VALIDATION")
+    print("="*60)
+    
+    # Create a comprehensive validation script that mimics check_pod.py functionality
+    validation_script = '''
+import os
+import sys
+
+def check_aws_environment():
+    """Check AWS environment variables"""
+    print("☁️ Checking AWS Environment...")
+    required_vars = ['AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY', 'MUSICGEN_S3_BUCKET', 'AWS_DEFAULT_REGION']
+    
+    missing = []
+    for var in required_vars:
+        if not os.getenv(var):
+            missing.append(var)
+    
+    if missing:
+        print(f"❌ Missing AWS variables: {', '.join(missing)}")
+        return False
+    else:
+        print("✅ AWS environment variables present")
+        return True
+
+def check_s3_connectivity():
+    """Test S3 connectivity and bucket access"""
+    print("📦 Testing S3 Connectivity...")
+    
+    try:
+        import boto3
+        from botocore.exceptions import ClientError
+        
+        bucket_name = os.getenv('MUSICGEN_S3_BUCKET')
+        region = os.getenv('AWS_DEFAULT_REGION', 'us-east-1')
+        
+        # Test basic S3 connectivity
+        s3 = boto3.client('s3', region_name=region)
+        response = s3.list_buckets()
+        print(f"✅ S3 connection successful - Found {len(response['Buckets'])} buckets")
+        
+        # Test specific bucket access
+        s3.head_bucket(Bucket=bucket_name)
+        print(f"✅ Bucket {bucket_name} exists and is accessible")
+        
+        # Test write permissions
+        test_key = 'musicgen_deployment_test.txt'
+        s3.put_object(Bucket=bucket_name, Key=test_key, Body='deployment validation test')
+        print("✅ Write permissions confirmed")
+        
+        # Clean up test object
+        s3.delete_object(Bucket=bucket_name, Key=test_key)
+        print("✅ S3 connectivity test completed successfully")
+        
+        return True
+        
+    except ImportError:
+        print("❌ boto3 not available")
+        return False
+    except ClientError as e:
+        error_code = e.response['Error']['Code']
+        print(f"❌ S3 error: {error_code}")
+        return False
+    except Exception as e:
+        print(f"❌ S3 test failed: {e}")
+        return False
+
+def check_dependencies():
+    """Check that all required dependencies are installed"""
+    print("📦 Checking Dependencies...")
+    
+    required_modules = ['torch', 'transformers', 'soundfile', 'numpy', 'boto3']
+    missing = []
+    
+    for module in required_modules:
+        try:
+            __import__(module)
+            print(f"✅ {module}")
+        except ImportError:
+            print(f"❌ {module}")
+            missing.append(module)
+    
+    if missing:
+        print(f"❌ Missing dependencies: {', '.join(missing)}")
+        return False
+    else:
+        print("✅ All dependencies available")
+        return True
+
+def check_gpu_torch():
+    """Check GPU and PyTorch integration"""
+    print("🎮 Checking GPU and PyTorch...")
+    
+    try:
+        import torch
+        
+        if torch.cuda.is_available():
+            gpu_count = torch.cuda.device_count()
+            gpu_name = torch.cuda.get_device_name(0)
+            print(f"✅ CUDA available - {gpu_count} GPU(s)")
+            print(f"✅ Primary GPU: {gpu_name}")
+            
+            # Test memory allocation
+            x = torch.randn(100, 100, device='cuda')
+            print("✅ GPU memory allocation successful")
+            del x
+            torch.cuda.empty_cache()
+            
+            return True
+        else:
+            print("❌ CUDA not available")
+            return False
+            
+    except Exception as e:
+        print(f"❌ GPU/PyTorch test failed: {e}")
+        return False
+
+# Run all validation checks
+print("🚀 POST-DEPLOYMENT VALIDATION")
+print("="*50)
+
+# Source environment variables first
+print("Loading environment variables...")
+
+aws_ok = check_aws_environment()
+deps_ok = check_dependencies()
+gpu_ok = check_gpu_torch()
+s3_ok = check_s3_connectivity() if aws_ok and deps_ok else False
+
+print("\\n📋 VALIDATION SUMMARY")
+print("="*30)
+print(f"AWS Environment: {'✅' if aws_ok else '❌'}")
+print(f"Dependencies: {'✅' if deps_ok else '❌'}")
+print(f"GPU/PyTorch: {'✅' if gpu_ok else '❌'}")
+print(f"S3 Connectivity: {'✅' if s3_ok else '❌'}")
+
+all_good = aws_ok and deps_ok and gpu_ok and s3_ok
+
+print("\\n" + "="*50)
+if all_good:
+    print("🎉 DEPLOYMENT VALIDATION SUCCESSFUL!")
+    print("Environment is ready for MusicGen processing")
+else:
+    print("⚠️ DEPLOYMENT VALIDATION FAILED!")
+    print("Check the errors above before proceeding")
+    
+print("="*50)
+sys.exit(0 if all_good else 1)
+'''
+    
+    # Write validation script to temporary file and upload to pod
+    try:
+        import tempfile
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
+            f.write(validation_script)
+            temp_script = f.name
+        
+        # Upload validation script to pod
+        subprocess.run([
+            'scp', '-P', port, '-o', 'StrictHostKeyChecking=no',
+            temp_script, f'{user}@{host}:/workspace/validate_deployment.py'
+        ], check=True)
+        
+        # Clean up local temp file
+        os.unlink(temp_script)
+        
+        # Run validation script on pod with environment
+        validation_command = '''
+cd /workspace &&
+source setup_env.sh &&
+uv run python validate_deployment.py
+'''
+        
+        result = subprocess.run([
+            'ssh', '-p', port, f'{user}@{host}', validation_command
+        ], capture_output=True, text=True, timeout=60)
+        
+        print("Validation Results:")
+        print("-" * 30)
+        print(result.stdout)
+        
+        if result.stderr:
+            print("Validation Errors:")
+            print("-" * 30)
+            print(result.stderr)
+        
+        # Clean up validation script
+        subprocess.run([
+            'ssh', '-p', port, f'{user}@{host}', 'rm -f /workspace/validate_deployment.py'
+        ], capture_output=True)
+        
+        return result.returncode == 0
+        
+    except Exception as e:
+        print(f"❌ Comprehensive validation failed: {e}")
+        return False
+
 def main():
     """Main deployment function"""
     print("🚀 RunPod MusicGen Deployment")
@@ -299,20 +502,32 @@ def main():
         if not configure_aws_environment():
             print("⚠️  AWS environment configuration had issues")
         
-        # Verify deployment
-        if verify_deployment():
-            print("\n" + "="*50)
-            print("🎵 DEPLOYMENT SUCCESSFUL!")
+        # Verify basic deployment first
+        basic_deployment_ok = verify_deployment()
+        if not basic_deployment_ok:
+            print("❌ Basic deployment verification failed")
+            sys.exit(1)
+        
+        # Run comprehensive post-deployment validation
+        validation_passed = run_comprehensive_validation()
+        
+        print("\n" + "="*50)
+        if validation_passed:
+            print("🎉 DEPLOYMENT AND VALIDATION SUCCESSFUL!")
             print("="*50)
+            print("✅ All systems verified and ready for MusicGen processing")
             print("\nTo run the worker:")
-            print(f"ssh {os.getenv('RUNPOD_USER', 'root')}@{os.getenv('RUNPOD_HOST')}")
+            print(f"ssh {os.getenv('RUNPOD_USER', 'root')}@{os.getenv('RUNPOD_HOST')} -p {os.getenv('RUNPOD_PORT', '22')}")
             print("cd /workspace")
             print("source setup_env.sh  # Load AWS environment")
             print("uv run src/worker.py")
-            print("\nOr use the monitoring script:")
-            print("python deploy/monitor_logs.py")
+            print("\nOr use the all-in-one monitoring script:")
+            print("uv run python deploy/deploy_and_monitor.py")
         else:
-            print("⚠️  Deployment completed with some issues")
+            print("⚠️  DEPLOYMENT COMPLETED BUT VALIDATION FAILED")
+            print("="*50)
+            print("❌ Some components are not working correctly")
+            print("Check the validation errors above before proceeding")
             sys.exit(1)
             
     except KeyboardInterrupt:
