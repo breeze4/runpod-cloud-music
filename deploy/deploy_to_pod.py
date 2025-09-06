@@ -170,35 +170,48 @@ def setup_environment():
     
     print("Setting up Python environment on pod...")
     
-    commands = [
-        # Change to workspace
-        'cd /workspace',
-        
-        # Check if uv is installed, install if not
-        'which uv || curl -LsSf https://astral.sh/uv/install.sh | sh',
-        
-        # Add uv to PATH for current session
-        'export PATH="$HOME/.cargo/bin:$PATH"',
-        
-        # Initialize uv project if pyproject.toml exists
-        'if [ -f pyproject.toml ]; then uv sync; else uv init --no-readme && uv add boto3 torch transformers soundfile numpy python-dotenv; fi',
-        
-        # Test Python environment
-        'uv run python --version'
-    ]
+    # Create a single command that installs uv and sets up environment
+    setup_command = '''
+    cd /workspace &&
+    export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH" &&
+    if ! command -v uv &> /dev/null; then
+        echo "Installing uv..." &&
+        curl -LsSf https://astral.sh/uv/install.sh | sh &&
+        export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
+    fi &&
+    echo "PATH=$HOME/.local/bin:$HOME/.cargo/bin:$PATH" >> ~/.bashrc &&
+    echo "Verifying uv installation..." &&
+    which uv &&
+    uv --version &&
+    if [ -f pyproject.toml ]; then
+        echo "Setting up project with uv sync..." &&
+        uv sync
+    else
+        echo "Creating new uv project..." &&
+        uv init --no-readme &&
+        uv add boto3 torch transformers soundfile numpy python-dotenv
+    fi &&
+    echo "Testing Python environment..." &&
+    uv run python --version
+    '''
     
     try:
-        for cmd in commands:
-            print(f"Running: {cmd}")
-            result = subprocess.run([
-                'ssh', '-p', port, f'{user}@{host}', 
-                f'cd /workspace && {cmd}'
-            ], capture_output=True, text=True)
-            
-            if result.returncode != 0:
-                print(f"⚠️  Command warning: {result.stderr}")
-            else:
-                print(f"✅ {cmd}")
+        print("Running comprehensive environment setup...")
+        result = subprocess.run([
+            'ssh', '-p', port, f'{user}@{host}', 
+            setup_command
+        ], capture_output=True, text=True, timeout=300)  # 5 minute timeout for dependencies
+        
+        if result.returncode != 0:
+            print(f"⚠️  Environment setup had issues:")
+            print(f"STDOUT: {result.stdout}")
+            print(f"STDERR: {result.stderr}")
+            # Don't fail completely, continue with verification
+        else:
+            print("✅ Environment setup completed successfully")
+        
+        print("Environment setup output:")
+        print(result.stdout)
         
         print("✅ Python environment setup completed")
         return True
@@ -290,8 +303,8 @@ def verify_deployment():
     
     checks = [
         ('Workspace directory', 'ls -la /workspace'),
-        ('Python environment', 'cd /workspace && uv run python --version'),
-        ('Worker script', 'ls -la /workspace/src/worker.py'),
+        ('Python environment', 'cd /workspace && export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH" && uv run python --version'),
+        ('Worker script', 'ls -la /workspace/worker.py'),
         ('AWS variables', 'cd /workspace && source setup_env.sh && echo "S3 bucket: $MUSICGEN_S3_BUCKET"')
     ]
     
@@ -491,6 +504,7 @@ sys.exit(0 if all_good else 1)
         # Run validation script on pod with environment
         validation_command = '''
 cd /workspace &&
+export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH" &&
 source setup_env.sh &&
 uv run python validate_deployment.py
 '''
@@ -565,7 +579,7 @@ def main():
             print(f"ssh {os.getenv('RUNPOD_USER', 'root')}@{os.getenv('RUNPOD_HOST')} -p {os.getenv('RUNPOD_PORT', '22')}")
             print("cd /workspace")
             print("source setup_env.sh  # Load AWS environment")
-            print("uv run src/worker.py")
+            print("uv run worker.py")
             print("\nOr use the all-in-one monitoring script:")
             print("uv run python deploy/deploy_and_monitor.py")
         else:
