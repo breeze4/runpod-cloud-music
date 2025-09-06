@@ -14,6 +14,7 @@ Complete step-by-step guide for deploying MusicGen on RunPod L40S GPU pods.
 - **Local Machine**: Windows/Linux/macOS with Python 3.8+
 - **SSH Client**: OpenSSH or compatible
 - **Git**: For cloning the repository
+- **UV Package Manager**: For dependency management (recommended)
 
 ### Account Setup
 - **RunPod Account**: With sufficient credits for L40S pod
@@ -67,7 +68,31 @@ git clone https://github.com/your-repo/runpod-cloud-music.git
 cd runpod-cloud-music
 ```
 
-### 2.2 Create Environment File
+### 2.2 Install Dependencies
+
+**Install UV (Recommended):**
+
+Windows:
+```powershell
+powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
+
+Linux/macOS:
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+**Install Project Dependencies:**
+```bash
+uv sync
+```
+
+**Alternative (using pip):**
+```bash
+pip install python-dotenv boto3 torch transformers soundfile numpy
+```
+
+### 2.3 Create Environment File
 
 1. **Copy Template**
    ```bash
@@ -87,11 +112,11 @@ cd runpod-cloud-music
    AWS_SECRET_ACCESS_KEY=your-secret-key    # AWS secret key
    ```
 
-### 2.3 Verify Configuration
+### 2.4 Verify Configuration
 
 1. **Test SSH Connection**
    ```bash
-   python deploy/check_gpu.py
+   uv run python deploy/check_gpu.py
    ```
    - Should show GPU information and PyTorch compatibility
 
@@ -127,7 +152,7 @@ jazz piano solo with smooth saxophone ; 30 ; jazz_smooth
 **Single command that deploys, starts worker, and shows live logs:**
 
 ```bash
-python deploy/deploy_and_monitor.py
+uv run python deploy/deploy_and_monitor.py
 ```
 
 This will:

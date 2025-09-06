@@ -17,6 +17,30 @@ Batch music generation using Meta's MusicGen model on RunPod L40S GPU pods.
 
 ## Setup Requirements
 
+### Local Development Setup
+
+1. **Install UV (Python Package Manager)**
+   
+   **Windows:**
+   ```powershell
+   powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
+   ```
+   
+   **Linux/macOS:**
+   ```bash
+   curl -LsSf https://astral.sh/uv/install.sh | sh
+   ```
+
+2. **Install Dependencies**
+   ```bash
+   uv sync
+   ```
+
+3. **Alternative: Use pip if you prefer**
+   ```bash
+   pip install python-dotenv boto3 torch transformers soundfile numpy
+   ```
+
 ### Environment Variables
 
 Create a `.env` file in the project root with these variables:
@@ -64,7 +88,7 @@ uv add boto3 torch transformers soundfile numpy python-dotenv
 Single command that deploys code, starts the worker, and shows live logs:
 
 ```cmd
-python deploy/deploy_and_monitor.py
+uv run python deploy/deploy_and_monitor.py
 ```
 
 This will:
@@ -78,12 +102,12 @@ This will:
 Deploy code without running or monitoring:
 
 ```cmd
-python deploy/deploy_to_pod.py
+uv run python deploy/deploy_to_pod.py
 ```
 
 Then manually SSH to pod and run:
 ```bash
-ssh root@your-pod-hostname
+ssh root@your-pod-hostname -p YOUR_PORT
 cd /workspace && uv run src/worker.py
 ```
 
@@ -93,13 +117,13 @@ Monitor logs from a worker that's already running:
 
 ```cmd
 # Worker logs (recommended)
-python deploy/monitor_logs.py
+uv run python deploy/monitor_logs.py
 
 # System logs
-python deploy/monitor_system.py
+uv run python deploy/monitor_system.py
 
 # GPU utilization
-python deploy/check_gpu.py
+uv run python deploy/check_gpu.py
 ```
 
 ## Input Format
