@@ -97,31 +97,63 @@ def sync_code():
         return False
     
     try:
-        # Create workspace directory on pod
-        subprocess.run([
-            'ssh', '-p', port, f'{user}@{host}', 
-            'mkdir -p /workspace'
-        ], check=True)
-        
-        # Use SCP instead of rsync for Windows compatibility
+        # Use SCP with explicit directory creation for Windows compatibility
         print("Using SCP for file transfer (Windows compatible)...")
+        
+        # First, clean up any existing files and ensure proper directory structure
+        print("Preparing workspace directory...")
+        subprocess.run([
+            'ssh', '-p', port, f'{user}@{host}',
+            'rm -rf /workspace/src /workspace/prompts.txt /workspace/pyproject.toml 2>/dev/null || true'
+        ], check=True)
         
         for item in existing_items:
             print(f"Uploading {item}...")
             if os.path.isdir(item):
-                # For directories, use scp -r
-                cmd = [
-                    'scp', '-r', '-P', port, '-o', 'StrictHostKeyChecking=no',
-                    item, f'{user}@{host}:/workspace/'
-                ]
+                # For directories, create the target directory first, then upload contents
+                target_dir = f"/workspace/{os.path.basename(item)}"
+                print(f"  Creating target directory: {target_dir}")
+                subprocess.run([
+                    'ssh', '-p', port, f'{user}@{host}',
+                    f'mkdir -p {target_dir}'
+                ], check=True)
+                
+                # Upload directory contents using wildcard (works better on Windows)
+                import glob
+                item_path = item.rstrip('/\\')  # Remove trailing slashes
+                
+                # Upload all files in the directory
+                for subitem in glob.glob(f"{item_path}/*"):
+                    if os.path.isfile(subitem):
+                        cmd = [
+                            'scp', '-P', port, '-o', 'StrictHostKeyChecking=no',
+                            subitem, f'{user}@{host}:{target_dir}/'
+                        ]
+                        result = subprocess.run(cmd, check=True)
+                    elif os.path.isdir(subitem):
+                        # Recursively upload subdirectories
+                        subdir_name = os.path.basename(subitem)
+                        cmd = [
+                            'scp', '-r', '-P', port, '-o', 'StrictHostKeyChecking=no',
+                            subitem, f'{user}@{host}:{target_dir}/'
+                        ]
+                        result = subprocess.run(cmd, check=True)
             else:
-                # For files, use regular scp
+                # For files, upload directly to workspace
                 cmd = [
                     'scp', '-P', port, '-o', 'StrictHostKeyChecking=no',
                     item, f'{user}@{host}:/workspace/'
                 ]
-            
-            result = subprocess.run(cmd, check=True)
+                result = subprocess.run(cmd, check=True)
+        
+        # Verify the upload
+        print("Verifying uploaded files...")
+        result = subprocess.run([
+            'ssh', '-p', port, f'{user}@{host}',
+            'ls -la /workspace/'
+        ], capture_output=True, text=True)
+        print("Workspace contents:")
+        print(result.stdout)
         
         print("✅ Code sync completed")
         return True
