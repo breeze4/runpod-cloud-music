@@ -4,7 +4,7 @@ MusicGen Worker Script
 
 This script runs on EC2 instances to generate music from prompts.
 It processes jobs from prompts.txt, generates audio using MusicGen,
-and uploads results to S3 with cost tracking.
+and uploads results to S3.
 """
 
 import os
@@ -14,6 +14,7 @@ import logging
 import csv
 import tempfile
 import hashlib
+from datetime import datetime
 from typing import List, Dict, Any, Tuple, Optional
 from dataclasses import dataclass
 
@@ -60,7 +61,6 @@ class JobResult:
     prompt: str
     requested_duration_s: int
     generation_time_s: float
-    estimated_cost_usd: float
     success: bool
     error_message: Optional[str] = None
 
@@ -76,20 +76,6 @@ class MusicGenWorker:
         self.s3_bucket = os.getenv('MUSICGEN_S3_BUCKET', '').strip().strip('\r\n').strip()
         self.aws_region = (os.getenv('AWS_DEFAULT_REGION') or os.getenv('AWS_REGION', 'us-east-1')).strip().strip('\r\n').strip()
         
-        # For hourly cost, use env var or calculate from instance type
-        hourly_cost = os.getenv('MUSICGEN_HOURLY_COST')
-        if hourly_cost:
-            self.hourly_cost_usd = float(hourly_cost)
-        else:
-            # Default pricing based on common instance types
-            instance_type = os.getenv('INSTANCE_TYPE', 'g4dn.xlarge')
-            pricing = {
-                'g4dn.xlarge': 0.526,
-                'g4dn.2xlarge': 0.752,
-                'm5.large': 0.096,
-                'm5.xlarge': 0.192
-            }
-            self.hourly_cost_usd = pricing.get(instance_type, 0.40)
         
         # Initialize AWS clients - boto3 will use environment credentials
         self.s3_client = boto3.client('s3', region_name=self.aws_region)
@@ -105,7 +91,11 @@ class MusicGenWorker:
         # Results tracking
         self.job_results: List[JobResult] = []
         
-        logger.info(f"Worker initialized - S3 bucket: {self.s3_bucket}, Hourly cost: ${self.hourly_cost_usd:.2f}")
+        # Run directory tracking - created lazily when first successful generation occurs
+        self.run_directory: Optional[str] = None
+        self.run_directory_created: bool = False
+        
+        logger.info(f"Worker initialized - S3 bucket: {self.s3_bucket}")
     
     def _validate_aws_environment(self) -> None:
         """Validate required AWS environment variables are present"""
@@ -257,6 +247,23 @@ class MusicGenWorker:
             raise ValueError(f"S3 bucket validation failed: {str(e)}")
         
         logger.info("✅ S3 connectivity and bucket validation passed")
+    
+    def generate_run_directory_name(self) -> str:
+        """Generate a unique run directory name based on timestamp"""
+        timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        return f"run_{timestamp}"
+    
+    def ensure_run_directory_created(self) -> str:
+        """
+        Ensure the run directory is created and return its name.
+        This is called lazily when the first successful generation occurs.
+        """
+        if not self.run_directory_created:
+            self.run_directory = self.generate_run_directory_name()
+            logger.info(f"Created run directory: {self.run_directory}")
+            self.run_directory_created = True
+        
+        return self.run_directory
     
     def initialize_model(self) -> None:
         """Initialize the MusicGen model and move it to GPU"""
@@ -483,7 +490,7 @@ class MusicGenWorker:
         Check if a file already exists in S3 bucket.
         
         Args:
-            filename: The S3 object key to check
+            filename: The S3 object key to check (with run directory prefix if run directory exists)
             
         Returns:
             True if file exists, False otherwise
@@ -625,8 +632,14 @@ class MusicGenWorker:
         Returns:
             JobResult with generation details
         """
-        # Generate deterministic filename
-        s3_filename = self.generate_deterministic_filename(prompt, duration, base_filename)
+        # Generate deterministic filename (without directory prefix for now)
+        base_s3_filename = self.generate_deterministic_filename(prompt, duration, base_filename)
+        
+        # Construct full S3 path with run directory if it exists
+        if self.run_directory_created:
+            s3_filename = f"{self.run_directory}/{base_s3_filename}"
+        else:
+            s3_filename = base_s3_filename
         
         logger.info(f"Processing: '{prompt[:60]}...' -> {s3_filename}")
         
@@ -638,7 +651,6 @@ class MusicGenWorker:
                 prompt=prompt,
                 requested_duration_s=duration,
                 generation_time_s=0.0,
-                estimated_cost_usd=0.0,
                 success=True
             )
         
@@ -658,25 +670,30 @@ class MusicGenWorker:
             sample_rate = 32000
             sf.write(temp_filepath, audio_data, sample_rate)
             
+            # Ensure run directory is created before first successful upload
+            if not self.run_directory_created:
+                run_dir = self.ensure_run_directory_created()
+                # Update the s3_filename to include the run directory
+                s3_filename = f"{run_dir}/{base_s3_filename}"
+                logger.info(f"Updated S3 path with run directory: {s3_filename}")
+            
             # Upload to S3
             upload_success = self.upload_to_s3(temp_filepath, s3_filename)
             
             # Calculate timing and cost
             end_time = time.time()
             generation_time = end_time - start_time
-            estimated_cost = (generation_time / 3600) * self.hourly_cost_usd
             
             # Clean up temporary file
             os.unlink(temp_filepath)
             
             if upload_success:
-                logger.info(f"✅ Job complete: {s3_filename} ({generation_time:.1f}s, ${estimated_cost:.3f})")
+                logger.info(f"✅ Job complete: {s3_filename} ({generation_time:.1f}s)")
                 return JobResult(
                     s3_filename=s3_filename,
                     prompt=prompt,
                     requested_duration_s=duration,
                     generation_time_s=generation_time,
-                    estimated_cost_usd=estimated_cost,
                     success=True
                 )
             else:
@@ -685,7 +702,6 @@ class MusicGenWorker:
                     prompt=prompt,
                     requested_duration_s=duration,
                     generation_time_s=generation_time,
-                    estimated_cost_usd=estimated_cost,
                     success=False,
                     error_message="S3 upload failed"
                 )
@@ -693,7 +709,6 @@ class MusicGenWorker:
         except Exception as e:
             end_time = time.time()
             generation_time = end_time - start_time
-            estimated_cost = (generation_time / 3600) * self.hourly_cost_usd
             
             logger.error(f"❌ Job failed: {str(e)}")
             return JobResult(
@@ -701,87 +716,10 @@ class MusicGenWorker:
                 prompt=prompt,
                 requested_duration_s=duration,
                 generation_time_s=generation_time,
-                estimated_cost_usd=estimated_cost,
                 success=False,
                 error_message=str(e)
             )
     
-    def generate_cost_report(self) -> str:
-        """
-        Generate cost report CSV content.
-        
-        Returns:
-            CSV content as string
-        """
-        # Filter to only successful jobs for the report
-        successful_results = [r for r in self.job_results if r.success]
-        
-        if not successful_results:
-            logger.warning("No successful jobs to include in cost report")
-            return "s3_filename,prompt,requested_duration_s,generation_time_s,estimated_cost_usd\n"
-        
-        # Create CSV content
-        output = []
-        output.append("s3_filename,prompt,requested_duration_s,generation_time_s,estimated_cost_usd")
-        
-        total_cost = 0.0
-        for result in successful_results:
-            escaped_prompt = result.prompt.replace('"', '""')
-            output.append(
-                f'"{result.s3_filename}",'
-                f'"{escaped_prompt}",'
-                f"{result.requested_duration_s},"
-                f"{result.generation_time_s:.2f},"
-                f"{result.estimated_cost_usd:.4f}"
-            )
-            total_cost += result.estimated_cost_usd
-        
-        # Add summary row
-        output.append("")  # Empty line
-        output.append(f"TOTAL,{len(successful_results)} files,,{sum(r.generation_time_s for r in successful_results):.2f},{total_cost:.4f}")
-        
-        return "\n".join(output)
-    
-    def upload_cost_report(self) -> bool:
-        """
-        Generate and upload the cost report to S3.
-        
-        Returns:
-            True if successful, False otherwise
-        """
-        try:
-            logger.info("Generating cost report...")
-            csv_content = self.generate_cost_report()
-            
-            # Create temporary file
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as temp_file:
-                temp_file.write(csv_content)
-                temp_filepath = temp_file.name
-            
-            # Upload to S3
-            timestamp = time.strftime("%Y%m%d_%H%M%S")
-            report_key = f"cost_report_{timestamp}.csv"
-            
-            success = self.upload_to_s3(temp_filepath, report_key)
-            
-            # Clean up
-            os.unlink(temp_filepath)
-            
-            if success:
-                # Also upload as latest report (create temp file again since original was deleted)
-                with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as temp_file_latest:
-                    temp_file_latest.write(csv_content)
-                    temp_filepath_latest = temp_file_latest.name
-                
-                self.upload_to_s3(temp_filepath_latest, "cost_report_latest.csv")
-                os.unlink(temp_filepath_latest)  # Clean up
-                logger.info(f"✅ Cost report uploaded: {report_key}")
-            
-            return success
-            
-        except Exception as e:
-            logger.error(f"Failed to upload cost report: {e}")
-            return False
     
     def generate_detailed_completion_report(self) -> str:
         """Generate detailed completion report with all files and metrics"""
@@ -789,7 +727,6 @@ class MusicGenWorker:
         failed_results = [r for r in self.job_results if not r.success]
         
         total_time = sum(r.generation_time_s for r in successful_results)
-        total_cost = sum(r.estimated_cost_usd for r in successful_results)
         
         report_lines = []
         report_lines.append("🎵 MUSICGEN BATCH COMPLETION REPORT")
@@ -799,8 +736,11 @@ class MusicGenWorker:
         report_lines.append(f"✅ Successful: {len(successful_results)}")
         report_lines.append(f"❌ Failed: {len(failed_results)}")
         report_lines.append(f"⏱️  Total generation time: {total_time:.1f}s ({total_time/60:.1f} minutes)")
-        report_lines.append(f"💰 Estimated total cost: ${total_cost:.4f}")
         report_lines.append(f"🗂️  S3 bucket: {self.s3_bucket}")
+        if self.run_directory_created:
+            report_lines.append(f"📁 Run directory: {self.run_directory}")
+        else:
+            report_lines.append("📁 Run directory: (no files generated)")
         
         if successful_results:
             report_lines.append("\n" + "=" * 80)
@@ -816,11 +756,10 @@ class MusicGenWorker:
             for i, result in enumerate(successful_results, 1):
                 duration_text = f"{result.requested_duration_s}s"
                 time_text = f"{result.generation_time_s:.1f}s"
-                cost_text = f"${result.estimated_cost_usd:.4f}"
                 
                 report_lines.append(f"{i:2d}. 📄 {result.s3_filename}")
                 report_lines.append(f"     Prompt: {result.prompt[:100]}{'...' if len(result.prompt) > 100 else ''}")
-                report_lines.append(f"     Duration: {duration_text} | Generation time: {time_text} | Cost: {cost_text}")
+                report_lines.append(f"     Duration: {duration_text} | Generation time: {time_text}")
                 report_lines.append("")
         
         if failed_results:
@@ -863,20 +802,21 @@ class MusicGenWorker:
             report_lines.append("")
             report_lines.append(f"Total audio generated: {total_audio_duration}s ({total_audio_duration/60:.1f} minutes)")
             report_lines.append(f"Generation efficiency: {efficiency_ratio:.2f}x real-time")
-            report_lines.append(f"Cost per second of audio: ${total_cost/total_audio_duration:.6f}" if total_audio_duration > 0 else "")
         
         report_lines.append("\n" + "=" * 80)
         report_lines.append("📋 S3 UPLOAD SUMMARY:")
         report_lines.append("=" * 80)
-        report_lines.append(f"S3 Bucket: s3://{self.s3_bucket}/")
+        if self.run_directory_created:
+            report_lines.append(f"S3 Location: s3://{self.s3_bucket}/{self.run_directory}/")
+        else:
+            report_lines.append(f"S3 Location: s3://{self.s3_bucket}/")
         report_lines.append("Files uploaded:")
         
         for result in successful_results:
             report_lines.append(f"  • {result.s3_filename}")
         
         if len(successful_results) > 0:
-            report_lines.append(f"\nCost report: cost_report_latest.csv")
-            report_lines.append(f"Total S3 objects created: {len(successful_results) + 1}")  # +1 for cost report
+            report_lines.append(f"Total S3 objects created: {len(successful_results)}")
         
         report_lines.append("\n" + "=" * 80)
         report_lines.append("🎵 END OF COMPLETION REPORT")
@@ -919,17 +859,11 @@ class MusicGenWorker:
                     # Continue with next job
                     continue
             
-            # Generate and upload cost report
-            logger.info("\n📊 Generating final cost report...")
-            report_success = self.upload_cost_report()
-            
             # Generate and display detailed completion report
             detailed_report = self.generate_detailed_completion_report()
             logger.info(f"\n{detailed_report}")
             
-            # Add cost report status to the completion summary
             successful_jobs = len([r for r in self.job_results if r.success])
-            logger.info(f"📊 Cost report uploaded: {'✅' if report_success else '❌'}")
             
             # Exit with error code if some jobs failed
             failed_jobs = len(jobs) - successful_jobs

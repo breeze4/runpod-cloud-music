@@ -1,19 +1,20 @@
-# MusicGen Batch Generation Prompts
-# Format: PROMPT_TEXT ; DURATION_IN_SECONDS ; FILE_NAME
-# Lines starting with # are comments and will be ignored
-
-# Example prompts for testing the system
-upbeat electronic dance music with heavy bass ; 30 ; dance_test
-cinematic orchestral music with epic drums and strings ; 45 ; cinematic_short
-relaxing acoustic guitar melody with light percussion ; 60 ; acoustic_relax
-dark ambient soundscape with industrial elements ; 90 ; ambient_dark
-
-# Longer examples for full testing
-#energetic rock anthem with electric guitars and powerful drums ; 180 ; rock_anthem_3min
-#peaceful piano composition with soft string accompaniment ; 240 ; piano_peaceful_4min
-
-# Various genres for comprehensive testing
-#jazz fusion with saxophone and electric piano ; 120 ; jazz_fusion_2min
-#tropical house music with steel drums and synths ; 150 ; tropical_house
-#classical baroque piece with harpsichord and strings ; 180 ; baroque_classical
-#lo-fi hip hop beat with vinyl crackle and mellow bass ; 90 ; lofi_hiphop
+Faded Memory Tapes: Vinyl crackle, warped samples, nostalgia ; 30 ; faded_memory_tapes
+Hopeful Sadness: Melancholy piano, uplifting chords ; 30 ; hopeful_sadness
+Restless Mind Loop: Repetitive beat, anxious, looping ; 30 ; restless_mind_loop
+Confident Head-Nod: Funky bassline, swung rhythm ; 30 ; confident_head_nod
+Floating Love Haze: Soft piano, lush pads, romantic ; 30 ; floating_love_haze
+Rainy Windowpane: Rain sounds, cozy, introspective ; 30 ; rainy_windowpane
+Empty City Driving: Mid-tempo, smooth bass, nighttime ; 30 ; empty_city_driving
+Jazzy Coffee Shop: Jazzy guitar, warm, relaxed ; 30 ; jazzy_coffee_shop
+Walking City Streets: Boom-bap drums, gritty, urban ; 30 ; walking_city_streets
+Moving Train View: Steady beat, travel, contemplative ; 30 ; moving_train_view
+Samurai Code Beats: Japanese instruments, sharp snares ; 30 ; samurai_code_beats
+Cosmic Zero-Gravity: Airy synths, space, weightless ; 30 ; cosmic_zero_gravity
+Muffled Ocean Depth: Filtered sound, slow, submerged ; 30 ; muffled_ocean_depth
+Gritty 90s Drums: Punchy drums, sample chops ; 30 ; gritty_90s_drums
+8-Bit Nostalgia: Chiptune synths, game samples ; 30 ; 8bit_nostalgia
+Solo Piano Moods: Piano-focused, emotional, minimal beat ; 30 ; solo_piano_moods
+Jazzy Guitar Loops: Guitar-led, clean chords, relaxed ; 30 ; jazzy_guitar_loops
+Haunting Vocal Chop: Looped vocal, soulful, melancholic ; 30 ; haunting_vocal_chop
+Drums-First Focus: Intricate drums, minimalist, rhythmic ; 30 ; drums_first_focus
+Beatless Soundscape: Ambient, no drums, atmospheric ; 30 ; beatless_soundscape
