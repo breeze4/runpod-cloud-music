@@ -243,8 +243,9 @@ def configure_aws_environment():
     for var in aws_vars:
         value = os.getenv(var)
         if value:
-            # Escape special characters for shell
-            escaped_value = value.replace('"', '\\"').replace('$', '\\$')
+            # Strip all whitespace including Windows line endings and escape special characters for shell
+            cleaned_value = value.strip().strip('\r\n').strip()
+            escaped_value = cleaned_value.replace('"', '\\"').replace('$', '\\$')
             env_commands.append(f'export {var}="{escaped_value}"')
         else:
             if var != 'AWS_DEFAULT_REGION':  # AWS_DEFAULT_REGION is optional
@@ -272,10 +273,10 @@ def configure_aws_environment():
             temp_path, f'{user}@{host}:/workspace/setup_env.sh'
         ], check=True)
         
-        # Make script executable and source it
+        # Make script executable, remove old bashrc entry, and add new one
         subprocess.run([
             'ssh', '-p', port, f'{user}@{host}',
-            'chmod +x /workspace/setup_env.sh && echo "source /workspace/setup_env.sh" >> ~/.bashrc'
+            'chmod +x /workspace/setup_env.sh && grep -v "source /workspace/setup_env.sh" ~/.bashrc > ~/.bashrc.tmp && mv ~/.bashrc.tmp ~/.bashrc && echo "source /workspace/setup_env.sh" >> ~/.bashrc'
         ], check=True)
         
         # Clean up temp file
@@ -291,6 +292,66 @@ def configure_aws_environment():
         
     except Exception as e:
         print(f"❌ AWS environment configuration failed: {e}")
+        return False
+
+def create_s3_bucket():
+    """Create S3 bucket if it doesn't exist"""
+    print("Creating S3 bucket if needed...")
+    
+    bucket_name = os.getenv('MUSICGEN_S3_BUCKET')
+    region = os.getenv('AWS_DEFAULT_REGION', 'us-east-1')
+    
+    if not bucket_name:
+        print("⚠️  No S3 bucket name specified, skipping bucket creation")
+        return True
+    
+    try:
+        import boto3
+        from botocore.exceptions import ClientError
+        
+        # Clean environment variables
+        bucket_name = bucket_name.strip().strip('\r\n').strip()
+        region = region.strip().strip('\r\n').strip()
+        
+        s3 = boto3.client('s3', region_name=region)
+        
+        # Check if bucket already exists
+        try:
+            s3.head_bucket(Bucket=bucket_name)
+            print(f"✅ S3 bucket '{bucket_name}' already exists")
+            return True
+        except ClientError as e:
+            error_code = e.response['Error']['Code']
+            if error_code == '404':
+                # Bucket doesn't exist, create it
+                print(f"Creating S3 bucket '{bucket_name}' in region '{region}'...")
+                
+                if region == 'us-east-1':
+                    # us-east-1 doesn't need LocationConstraint
+                    s3.create_bucket(Bucket=bucket_name)
+                else:
+                    # Other regions need LocationConstraint
+                    s3.create_bucket(
+                        Bucket=bucket_name,
+                        CreateBucketConfiguration={'LocationConstraint': region}
+                    )
+                
+                # Wait for bucket to be available
+                print("Waiting for bucket to be available...")
+                waiter = s3.get_waiter('bucket_exists')
+                waiter.wait(Bucket=bucket_name, WaiterConfig={'Delay': 2, 'MaxAttempts': 30})
+                
+                print(f"✅ S3 bucket '{bucket_name}' created successfully")
+                return True
+            else:
+                print(f"❌ Error checking bucket: {error_code}")
+                return False
+                
+    except ImportError:
+        print("❌ boto3 not available for bucket creation")
+        return False
+    except Exception as e:
+        print(f"❌ S3 bucket creation failed: {e}")
         return False
 
 def verify_deployment():
@@ -330,7 +391,7 @@ def verify_deployment():
     return all_passed
 
 def run_comprehensive_validation():
-    """Run comprehensive post-deployment validation using check_pod.py functionality"""
+    """Run comprehensive post-deployment validation using separate validation script"""
     host = os.getenv('RUNPOD_HOST')
     user = os.getenv('RUNPOD_USER', 'root')
     port = os.getenv('RUNPOD_PORT', '22')
@@ -338,168 +399,18 @@ def run_comprehensive_validation():
     print("\n🔍 RUNNING COMPREHENSIVE POST-DEPLOYMENT VALIDATION")
     print("="*60)
     
-    # Create a comprehensive validation script that mimics check_pod.py functionality
-    validation_script = '''
-import os
-import sys
-
-def check_aws_environment():
-    """Check AWS environment variables"""
-    print("☁️ Checking AWS Environment...")
-    required_vars = ['AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY', 'MUSICGEN_S3_BUCKET', 'AWS_DEFAULT_REGION']
-    
-    missing = []
-    for var in required_vars:
-        if not os.getenv(var):
-            missing.append(var)
-    
-    if missing:
-        print(f"❌ Missing AWS variables: {', '.join(missing)}")
-        return False
-    else:
-        print("✅ AWS environment variables present")
-        return True
-
-def check_s3_connectivity():
-    """Test S3 connectivity and bucket access"""
-    print("📦 Testing S3 Connectivity...")
-    
     try:
-        import boto3
-        from botocore.exceptions import ClientError
-        
-        bucket_name = os.getenv('MUSICGEN_S3_BUCKET')
-        region = os.getenv('AWS_DEFAULT_REGION', 'us-east-1')
-        
-        # Test basic S3 connectivity
-        s3 = boto3.client('s3', region_name=region)
-        response = s3.list_buckets()
-        print(f"✅ S3 connection successful - Found {len(response['Buckets'])} buckets")
-        
-        # Test specific bucket access
-        s3.head_bucket(Bucket=bucket_name)
-        print(f"✅ Bucket {bucket_name} exists and is accessible")
-        
-        # Test write permissions
-        test_key = 'musicgen_deployment_test.txt'
-        s3.put_object(Bucket=bucket_name, Key=test_key, Body='deployment validation test')
-        print("✅ Write permissions confirmed")
-        
-        # Clean up test object
-        s3.delete_object(Bucket=bucket_name, Key=test_key)
-        print("✅ S3 connectivity test completed successfully")
-        
-        return True
-        
-    except ImportError:
-        print("❌ boto3 not available")
-        return False
-    except ClientError as e:
-        error_code = e.response['Error']['Code']
-        print(f"❌ S3 error: {error_code}")
-        return False
-    except Exception as e:
-        print(f"❌ S3 test failed: {e}")
-        return False
-
-def check_dependencies():
-    """Check that all required dependencies are installed"""
-    print("📦 Checking Dependencies...")
-    
-    required_modules = ['torch', 'transformers', 'soundfile', 'numpy', 'boto3']
-    missing = []
-    
-    for module in required_modules:
-        try:
-            __import__(module)
-            print(f"✅ {module}")
-        except ImportError:
-            print(f"❌ {module}")
-            missing.append(module)
-    
-    if missing:
-        print(f"❌ Missing dependencies: {', '.join(missing)}")
-        return False
-    else:
-        print("✅ All dependencies available")
-        return True
-
-def check_gpu_torch():
-    """Check GPU and PyTorch integration"""
-    print("🎮 Checking GPU and PyTorch...")
-    
-    try:
-        import torch
-        
-        if torch.cuda.is_available():
-            gpu_count = torch.cuda.device_count()
-            gpu_name = torch.cuda.get_device_name(0)
-            print(f"✅ CUDA available - {gpu_count} GPU(s)")
-            print(f"✅ Primary GPU: {gpu_name}")
-            
-            # Test memory allocation
-            x = torch.randn(100, 100, device='cuda')
-            print("✅ GPU memory allocation successful")
-            del x
-            torch.cuda.empty_cache()
-            
-            return True
-        else:
-            print("❌ CUDA not available")
-            return False
-            
-    except Exception as e:
-        print(f"❌ GPU/PyTorch test failed: {e}")
-        return False
-
-# Run all validation checks
-print("🚀 POST-DEPLOYMENT VALIDATION")
-print("="*50)
-
-# Source environment variables first
-print("Loading environment variables...")
-
-aws_ok = check_aws_environment()
-deps_ok = check_dependencies()
-gpu_ok = check_gpu_torch()
-s3_ok = check_s3_connectivity() if aws_ok and deps_ok else False
-
-print("\\n📋 VALIDATION SUMMARY")
-print("="*30)
-print(f"AWS Environment: {'✅' if aws_ok else '❌'}")
-print(f"Dependencies: {'✅' if deps_ok else '❌'}")
-print(f"GPU/PyTorch: {'✅' if gpu_ok else '❌'}")
-print(f"S3 Connectivity: {'✅' if s3_ok else '❌'}")
-
-all_good = aws_ok and deps_ok and gpu_ok and s3_ok
-
-print("\\n" + "="*50)
-if all_good:
-    print("🎉 DEPLOYMENT VALIDATION SUCCESSFUL!")
-    print("Environment is ready for MusicGen processing")
-else:
-    print("⚠️ DEPLOYMENT VALIDATION FAILED!")
-    print("Check the errors above before proceeding")
-    
-print("="*50)
-sys.exit(0 if all_good else 1)
-'''
-    
-    # Write validation script to temporary file and upload to pod
-    try:
-        import tempfile
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
-            f.write(validation_script)
-            temp_script = f.name
-        
         # Upload validation script to pod
+        validation_script_path = Path(__file__).parent / 'validate_deployment.py'
+        
+        if not validation_script_path.exists():
+            print("❌ Validation script not found at deploy/validate_deployment.py")
+            return False
+        
         subprocess.run([
             'scp', '-P', port, '-o', 'StrictHostKeyChecking=no',
-            temp_script, f'{user}@{host}:/workspace/validate_deployment.py'
+            str(validation_script_path), f'{user}@{host}:/workspace/validate_deployment.py'
         ], check=True)
-        
-        # Clean up local temp file
-        os.unlink(temp_script)
         
         # Run validation script on pod with environment
         validation_command = '''
@@ -511,7 +422,7 @@ uv run python validate_deployment.py
         
         result = subprocess.run([
             'ssh', '-p', port, f'{user}@{host}', validation_command
-        ], capture_output=True, text=True, timeout=60)
+        ], capture_output=True, text=True, timeout=30)
         
         print("Validation Results:")
         print("-" * 30)
@@ -529,6 +440,13 @@ uv run python validate_deployment.py
         
         return result.returncode == 0
         
+    except subprocess.TimeoutExpired:
+        print("❌ Validation timed out after 30 seconds")
+        # Clean up validation script even on timeout
+        subprocess.run([
+            'ssh', '-p', port, f'{user}@{host}', 'rm -f /workspace/validate_deployment.py'
+        ], capture_output=True)
+        return False
     except Exception as e:
         print(f"❌ Comprehensive validation failed: {e}")
         return False
@@ -560,6 +478,10 @@ def main():
         # Configure AWS
         if not configure_aws_environment():
             print("⚠️  AWS environment configuration had issues")
+        
+        # Create S3 bucket if needed
+        if not create_s3_bucket():
+            print("⚠️  S3 bucket creation had issues")
         
         # Verify basic deployment first
         basic_deployment_ok = verify_deployment()

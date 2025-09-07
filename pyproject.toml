@@ -5,7 +5,6 @@ description = "MusicGen batch processing system for RunPod L40S GPU pods"
 authors = [
     { name = "RunPod MusicGen", email = "noreply@example.com" }
 ]
-readme = "README.md"
 requires-python = ">=3.8.1"
 dependencies = [
     "boto3",
