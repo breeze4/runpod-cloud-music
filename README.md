@@ -29,13 +29,13 @@ Install: `uv sync`
 
 ## Workflows
 
-**First-time setup (complete):**
+**First-time setup:**
 1. `uv run deploy/deploy_code.py`
 2. `uv run deploy/install_dependencies.py` 
 3. `uv run deploy/validate_environment.py`
 4. `uv run deploy/run_worker.py`
 
-**Worker code iteration (fast):**
+**Worker code iteration:**
 1. Edit `src/worker.py` locally
 2. `uv run deploy/deploy_code.py && uv run deploy/run_worker.py`
 
