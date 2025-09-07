@@ -24,7 +24,7 @@ def load_environment():
     env_file = Path.cwd() / '.env'
     
     if not env_file.exists():
-        print("❌ .env file not found")
+        print("ERROR: .env file not found")
         print("Create .env file from .env.template with your credentials")
         sys.exit(1)
     
@@ -39,18 +39,18 @@ def load_environment():
             missing.append(var)
     
     if missing:
-        print(f"❌ Missing required variables in .env: {', '.join(missing)}")
+        print(f"ERROR: Missing required variables in .env: {', '.join(missing)}")
         sys.exit(1)
 
 def run_deployment():
     """Run the deployment script"""
-    print("🚀 STEP 1: DEPLOYING TO RUNPOD")
+    print("STEP 1: DEPLOYING TO RUNPOD")
     print("="*50)
     
     deploy_script = Path(__file__).parent / 'deploy_to_pod.py'
     
     if not deploy_script.exists():
-        print("❌ deploy_to_pod.py not found")
+        print("ERROR: deploy_to_pod.py not found")
         return False
     
     try:
@@ -62,10 +62,10 @@ def run_deployment():
         return result.returncode == 0
         
     except subprocess.TimeoutExpired:
-        print("❌ Deployment timed out (5 minutes)")
+        print("ERROR: Deployment timed out (5 minutes)")
         return False
     except Exception as e:
-        print(f"❌ Deployment failed: {e}")
+        print(f"ERROR: Deployment failed: {e}")
         return False
 
 def start_worker():
@@ -74,12 +74,12 @@ def start_worker():
     user = os.getenv('RUNPOD_USER', 'root')
     port = os.getenv('RUNPOD_PORT', '22')
     
-    print("\n🎵 STEP 2: STARTING MUSICGEN WORKER")
+    print("\n STEP 2: STARTING MUSICGEN WORKER")
     print("="*50)
     
     # Check if prompts.txt exists
     if not Path('prompts.txt').exists():
-        print("⚠️  prompts.txt not found - worker will have no jobs to process")
+        print("WARNING: prompts.txt not found - worker will have no jobs to process")
         print("Create prompts.txt with your music generation requests")
         return None
     
@@ -87,8 +87,9 @@ def start_worker():
         # Start worker in background
         start_command = '''
 cd /workspace && 
+export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH" &&
 source setup_env.sh && 
-nohup uv run src/worker.py > worker_output.log 2>&1 & 
+nohup $HOME/.local/bin/uv run worker.py > worker_output.log 2>&1 & 
 echo $! > worker.pid &&
 echo "Worker started with PID $(cat worker.pid)"
 '''
@@ -97,25 +98,25 @@ echo "Worker started with PID $(cat worker.pid)"
             'ssh', '-o', 'StrictHostKeyChecking=no',
             '-p', port,
             f'{user}@{host}', start_command
-        ], capture_output=True, text=True, timeout=30)
+        ], capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=30)
         
         if result.returncode == 0:
-            print("✅ MusicGen worker started")
+            print("SUCCESS: MusicGen worker started")
             print(result.stdout)
             
             # Get PID
             pid_result = subprocess.run([
                 'ssh', '-p', port, f'{user}@{host}', 'cat /workspace/worker.pid 2>/dev/null || echo "unknown"'
-            ], capture_output=True, text=True, timeout=5)
+            ], capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=5)
             
             worker_pid = pid_result.stdout.strip() if pid_result.returncode == 0 else "unknown"
             return worker_pid
         else:
-            print(f"❌ Failed to start worker: {result.stderr}")
+            print(f"ERROR: Failed to start worker: {result.stderr}")
             return None
             
     except Exception as e:
-        print(f"❌ Error starting worker: {e}")
+        print(f"ERROR: Error starting worker: {e}")
         return None
 
 def monitor_worker(worker_pid):
@@ -124,9 +125,9 @@ def monitor_worker(worker_pid):
     user = os.getenv('RUNPOD_USER', 'root')
     port = os.getenv('RUNPOD_PORT', '22')
     
-    print(f"\n👀 STEP 3: MONITORING WORKER (PID: {worker_pid})")
+    print(f"\n STEP 3: MONITORING WORKER (PID: {worker_pid})")
     print("="*50)
-    print("🔍 Streaming worker logs... (Press Ctrl+C to stop monitoring)")
+    print("Streaming worker logs... (Press Ctrl+C to stop monitoring)")
     print("-" * 50)
     
     try:
@@ -176,7 +177,7 @@ tail -20 worker_output.log 2>/dev/null || echo "No worker output found"
         # Handle Ctrl+C gracefully
         def signal_handler(sig, frame):
             print("\n🛑 Stopping monitor...")
-            print("⚠️  Worker may still be running on pod")
+            print("WARNING: Worker may still be running on pod")
             process.terminate()
             sys.exit(0)
         
@@ -190,7 +191,7 @@ tail -20 worker_output.log 2>/dev/null || echo "No worker output found"
         process.wait()
         
     except Exception as e:
-        print(f"❌ Error monitoring worker: {e}")
+        print(f"ERROR: Error monitoring worker: {e}")
 
 def show_completion_summary():
     """Show final completion summary"""
@@ -205,18 +206,18 @@ def show_completion_summary():
         # Check for completion report
         summary_commands = [
             'ls -la /workspace/*.csv 2>/dev/null | head -5',
-            'tail -20 /workspace/worker_output.log 2>/dev/null | grep -E "(✅|❌|completed|failed|COMPLETED)" | tail -10',
+            'tail -20 /workspace/worker_output.log 2>/dev/null | grep -E "(SUCCESS|ERROR|completed|failed|COMPLETED)" | tail -10',
             'echo "Worker status:" && ps aux | grep worker | grep -v grep || echo "Worker process not running"'
         ]
         
         for i, cmd in enumerate(summary_commands, 1):
             result = subprocess.run([
                 'ssh', '-p', port, f'{user}@{host}', cmd
-            ], capture_output=True, text=True, timeout=10)
+            ], capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=10)
             
             if result.returncode == 0 and result.stdout.strip():
                 if i == 1:
-                    print("📄 Generated reports:")
+                    print("Generated reports:")
                 elif i == 2:
                     print("\n📝 Recent worker messages:")
                 elif i == 3:
@@ -228,7 +229,7 @@ def show_completion_summary():
                             print(f"   {line}")
     
     except Exception as e:
-        print(f"⚠️  Could not retrieve completion summary: {e}")
+        print(f"WARNING: Could not retrieve completion summary: {e}")
     
     print("\n" + "="*50)
     print("🎵 DEPLOY AND MONITOR COMPLETED")
@@ -245,7 +246,7 @@ def show_completion_summary():
 
 def main():
     """Main deploy and monitor function"""
-    print("🚀 RUNPOD DEPLOY AND MONITOR")
+    print("RUNPOD DEPLOY AND MONITOR")
     print("="*60)
     
     try:
@@ -253,26 +254,26 @@ def main():
         load_environment()
         host = os.getenv('RUNPOD_HOST')
         port = os.getenv('RUNPOD_PORT', '22')
-    print(f"Target: {host}:{port}")
+        print(f"Target: {host}:{port}")
         print()
         
         # Step 1: Deploy
         if not run_deployment():
-            print("❌ Deployment failed - cannot continue")
+            print("ERROR: Deployment failed - cannot continue")
             sys.exit(1)
         
         # Small delay to ensure deployment is complete
-        print("⏸️  Waiting 3 seconds for deployment to settle...")
+        print("Waiting 3 seconds for deployment to settle...")
         time.sleep(3)
         
         # Step 2: Start worker
         worker_pid = start_worker()
         if not worker_pid:
-            print("❌ Could not start worker")
+            print("ERROR: Could not start worker")
             sys.exit(1)
         
         # Small delay before monitoring
-        print("⏸️  Waiting 5 seconds for worker to initialize...")
+        print("Waiting 5 seconds for worker to initialize...")
         time.sleep(5)
         
         # Step 3: Monitor
@@ -282,10 +283,10 @@ def main():
         show_completion_summary()
         
     except KeyboardInterrupt:
-        print("\n🛑 Deploy and monitor interrupted")
-        print("⚠️  Worker may still be running on pod")
+        print("\nDeploy and monitor interrupted")
+        print("WARNING: Worker may still be running on pod")
     except Exception as e:
-        print(f"❌ Deploy and monitor failed: {e}")
+        print(f"ERROR: Deploy and monitor failed: {e}")
         sys.exit(1)
 
 if __name__ == '__main__':

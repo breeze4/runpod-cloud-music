@@ -36,10 +36,6 @@ Batch music generation using Meta's MusicGen model on RunPod L40S GPU pods.
    uv sync
    ```
 
-3. **Alternative: Use pip if you prefer**
-   ```bash
-   pip install python-dotenv boto3 torch transformers soundfile numpy
-   ```
 
 ### Environment Variables
 
@@ -111,7 +107,17 @@ ssh root@your-pod-hostname -p YOUR_PORT
 cd /workspace && uv run src/worker.py
 ```
 
-### 3. Monitor Only
+### 3. Quick Development Iteration
+
+For development iteration when the pod environment is already set up:
+
+```cmd
+uv run python deploy/sync_and_run_worker.py
+```
+
+This syncs code changes to the pod and restarts the worker without full environment setup.
+
+### 4. Monitor Only
 
 Monitor logs from a worker that's already running:
 
@@ -124,6 +130,9 @@ uv run python deploy/monitor_system.py
 
 # Pod environment check
 uv run python deploy/check_pod.py
+
+# Validate deployment (AWS, GPU, dependencies)
+uv run python deploy/validate_deployment.py
 ```
 
 ## Input Format
@@ -160,5 +169,5 @@ Generated audio files are uploaded to your S3 bucket with:
 
 **Generation Issues:**
 - Monitor logs with `python deploy/monitor_logs.py`
-- Check GPU availability with `python deploy/check_gpu.py`
-- Verify model downloads successfully (6GB for musicgen-medium)
+- Validate deployment with `python deploy/validate_deployment.py`
+- Verify model downloads successfully (12GB for musicgen-large)

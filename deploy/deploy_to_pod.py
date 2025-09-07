@@ -18,7 +18,7 @@ def load_environment():
     env_file = Path.cwd() / '.env'
     
     if not env_file.exists():
-        print("❌ .env file not found")
+        print("ERROR: .env file not found")
         print("Create .env file from .env.template with your credentials")
         sys.exit(1)
     
@@ -33,10 +33,10 @@ def load_environment():
             missing.append(var)
     
     if missing:
-        print(f"❌ Missing required variables in .env: {', '.join(missing)}")
+        print(f"ERROR: Missing required variables in .env: {', '.join(missing)}")
         sys.exit(1)
     
-    print("✅ Environment loaded from .env file")
+    print("SUCCESS: Environment loaded from .env file")
 
 def check_ssh_connection():
     """Test SSH connection to RunPod"""
@@ -56,17 +56,17 @@ def check_ssh_connection():
         ], capture_output=True, text=True, timeout=15)
         
         if result.returncode == 0:
-            print("✅ SSH connection successful")
+            print("SUCCESS: SSH connection successful")
             return True
         else:
-            print(f"❌ SSH connection failed: {result.stderr}")
+            print(f"ERROR: SSH connection failed: {result.stderr}")
             return False
             
     except subprocess.TimeoutExpired:
-        print("❌ SSH connection timed out")
+        print("ERROR: SSH connection timed out")
         return False
     except Exception as e:
-        print(f"❌ SSH connection error: {e}")
+        print(f"ERROR: SSH connection error: {e}")
         return False
 
 def sync_code():
@@ -90,10 +90,10 @@ def sync_code():
         if Path(item).exists():
             existing_items.append(item)
         else:
-            print(f"⚠️  {item} not found, skipping")
+            print(f"WARNING: {item} not found, skipping")
     
     if not existing_items:
-        print("❌ No files to sync")
+        print("ERROR: No files to sync")
         return False
     
     try:
@@ -155,11 +155,11 @@ def sync_code():
         print("Workspace contents:")
         print(result.stdout)
         
-        print("✅ Code sync completed")
+        print("SUCCESS: Code sync completed")
         return True
         
     except subprocess.CalledProcessError as e:
-        print(f"❌ Code sync failed: {e}")
+        print(f"ERROR: Code sync failed: {e}")
         return False
 
 def setup_environment():
@@ -203,21 +203,21 @@ def setup_environment():
         ], capture_output=True, text=True, timeout=300)  # 5 minute timeout for dependencies
         
         if result.returncode != 0:
-            print(f"⚠️  Environment setup had issues:")
+            print(f"WARNING: Environment setup had issues:")
             print(f"STDOUT: {result.stdout}")
             print(f"STDERR: {result.stderr}")
             # Don't fail completely, continue with verification
         else:
-            print("✅ Environment setup completed successfully")
+            print("SUCCESS: Environment setup completed successfully")
         
         print("Environment setup output:")
         print(result.stdout)
         
-        print("✅ Python environment setup completed")
+        print("SUCCESS: Python environment setup completed")
         return True
         
     except Exception as e:
-        print(f"❌ Environment setup failed: {e}")
+        print(f"ERROR: Environment setup failed: {e}")
         return False
 
 def configure_aws_environment():
@@ -252,10 +252,10 @@ def configure_aws_environment():
                 missing_vars.append(var)
     
     if missing_vars:
-        print(f"⚠️  Missing AWS variables (set in .env): {', '.join(missing_vars)}")
+        print(f"WARNING: Missing AWS variables (set in .env): {', '.join(missing_vars)}")
     
     if not env_commands:
-        print("❌ No AWS environment variables to configure")
+        print("ERROR: No AWS environment variables to configure")
         return False
     
     try:
@@ -282,7 +282,7 @@ def configure_aws_environment():
         # Clean up temp file
         os.unlink(temp_path)
         
-        print("✅ AWS environment configured")
+        print("SUCCESS: AWS environment configured")
         print("Variables set:")
         for var in aws_vars:
             if os.getenv(var):
@@ -291,7 +291,7 @@ def configure_aws_environment():
         return True
         
     except Exception as e:
-        print(f"❌ AWS environment configuration failed: {e}")
+        print(f"ERROR: AWS environment configuration failed: {e}")
         return False
 
 def create_s3_bucket():
@@ -302,7 +302,7 @@ def create_s3_bucket():
     region = os.getenv('AWS_DEFAULT_REGION', 'us-east-1')
     
     if not bucket_name:
-        print("⚠️  No S3 bucket name specified, skipping bucket creation")
+        print("WARNING: No S3 bucket name specified, skipping bucket creation")
         return True
     
     try:
@@ -318,7 +318,7 @@ def create_s3_bucket():
         # Check if bucket already exists
         try:
             s3.head_bucket(Bucket=bucket_name)
-            print(f"✅ S3 bucket '{bucket_name}' already exists")
+            print(f"SUCCESS: S3 bucket '{bucket_name}' already exists")
             return True
         except ClientError as e:
             error_code = e.response['Error']['Code']
@@ -341,17 +341,17 @@ def create_s3_bucket():
                 waiter = s3.get_waiter('bucket_exists')
                 waiter.wait(Bucket=bucket_name, WaiterConfig={'Delay': 2, 'MaxAttempts': 30})
                 
-                print(f"✅ S3 bucket '{bucket_name}' created successfully")
+                print(f"SUCCESS: S3 bucket '{bucket_name}' created successfully")
                 return True
             else:
-                print(f"❌ Error checking bucket: {error_code}")
+                print(f"ERROR: Error checking bucket: {error_code}")
                 return False
                 
     except ImportError:
-        print("❌ boto3 not available for bucket creation")
+        print("ERROR: boto3 not available for bucket creation")
         return False
     except Exception as e:
-        print(f"❌ S3 bucket creation failed: {e}")
+        print(f"ERROR: S3 bucket creation failed: {e}")
         return False
 
 def verify_deployment():
@@ -378,14 +378,14 @@ def verify_deployment():
             ], capture_output=True, text=True, timeout=10)
             
             if result.returncode == 0:
-                print(f"✅ {check_name}: OK")
+                print(f"SUCCESS: {check_name}: OK")
             else:
-                print(f"❌ {check_name}: FAILED")
+                print(f"ERROR: {check_name}: FAILED")
                 print(f"   Error: {result.stderr}")
                 all_passed = False
                 
         except Exception as e:
-            print(f"❌ {check_name}: ERROR - {e}")
+            print(f"ERROR: {check_name}: ERROR - {e}")
             all_passed = False
     
     return all_passed
@@ -396,7 +396,7 @@ def run_comprehensive_validation():
     user = os.getenv('RUNPOD_USER', 'root')
     port = os.getenv('RUNPOD_PORT', '22')
     
-    print("\n🔍 RUNNING COMPREHENSIVE POST-DEPLOYMENT VALIDATION")
+    print("\nRUNNING COMPREHENSIVE POST-DEPLOYMENT VALIDATION")
     print("="*60)
     
     try:
@@ -404,7 +404,7 @@ def run_comprehensive_validation():
         validation_script_path = Path(__file__).parent / 'validate_deployment.py'
         
         if not validation_script_path.exists():
-            print("❌ Validation script not found at deploy/validate_deployment.py")
+            print("ERROR: Validation script not found at deploy/validate_deployment.py")
             return False
         
         subprocess.run([
@@ -441,19 +441,19 @@ uv run python validate_deployment.py
         return result.returncode == 0
         
     except subprocess.TimeoutExpired:
-        print("❌ Validation timed out after 30 seconds")
+        print("ERROR: Validation timed out after 30 seconds")
         # Clean up validation script even on timeout
         subprocess.run([
             'ssh', '-p', port, f'{user}@{host}', 'rm -f /workspace/validate_deployment.py'
         ], capture_output=True)
         return False
     except Exception as e:
-        print(f"❌ Comprehensive validation failed: {e}")
+        print(f"ERROR: Comprehensive validation failed: {e}")
         return False
 
 def main():
     """Main deployment function"""
-    print("🚀 RunPod MusicGen Deployment")
+    print("RunPod MusicGen Deployment")
     print("="*50)
     
     try:
@@ -462,31 +462,31 @@ def main():
         
         # Check SSH connection
         if not check_ssh_connection():
-            print("❌ Cannot connect to RunPod. Check RUNPOD_HOST and SSH keys")
+            print("ERROR: Cannot connect to RunPod. Check RUNPOD_HOST and SSH keys")
             sys.exit(1)
         
         # Sync code
         if not sync_code():
-            print("❌ Code sync failed")
+            print("ERROR: Code sync failed")
             sys.exit(1)
         
         # Setup environment
         if not setup_environment():
-            print("❌ Environment setup failed")
+            print("ERROR: Environment setup failed")
             sys.exit(1)
         
         # Configure AWS
         if not configure_aws_environment():
-            print("⚠️  AWS environment configuration had issues")
+            print("WARNING: AWS environment configuration had issues")
         
         # Create S3 bucket if needed
         if not create_s3_bucket():
-            print("⚠️  S3 bucket creation had issues")
+            print("WARNING: S3 bucket creation had issues")
         
         # Verify basic deployment first
         basic_deployment_ok = verify_deployment()
         if not basic_deployment_ok:
-            print("❌ Basic deployment verification failed")
+            print("ERROR: Basic deployment verification failed")
             sys.exit(1)
         
         # Run comprehensive post-deployment validation
@@ -494,28 +494,30 @@ def main():
         
         print("\n" + "="*50)
         if validation_passed:
-            print("🎉 DEPLOYMENT AND VALIDATION SUCCESSFUL!")
+            print("DEPLOYMENT AND VALIDATION SUCCESSFUL!")
             print("="*50)
-            print("✅ All systems verified and ready for MusicGen processing")
+            print("SUCCESS: All systems verified and ready for MusicGen processing")
             print("\nTo run the worker:")
             print(f"ssh {os.getenv('RUNPOD_USER', 'root')}@{os.getenv('RUNPOD_HOST')} -p {os.getenv('RUNPOD_PORT', '22')}")
             print("cd /workspace")
             print("source setup_env.sh  # Load AWS environment")
             print("uv run worker.py")
-            print("\nOr use the all-in-one monitoring script:")
-            print("uv run python deploy/deploy_and_monitor.py")
+            print("\nFor quick iteration (sync code and restart worker):")
+            print("uv run deploy/sync_and_run_worker.py")
+            print("\nFor monitoring:")
+            print("uv run deploy/monitor_logs.py")
         else:
-            print("⚠️  DEPLOYMENT COMPLETED BUT VALIDATION FAILED")
+            print("WARNING: DEPLOYMENT COMPLETED BUT VALIDATION FAILED")
             print("="*50)
-            print("❌ Some components are not working correctly")
+            print("ERROR: Some components are not working correctly")
             print("Check the validation errors above before proceeding")
             sys.exit(1)
             
     except KeyboardInterrupt:
-        print("\n⚠️  Deployment interrupted by user")
+        print("\nWARNING: Deployment interrupted by user")
         sys.exit(1)
     except Exception as e:
-        print(f"❌ Deployment failed: {e}")
+        print(f"ERROR: Deployment failed: {e}")
         sys.exit(1)
 
 if __name__ == '__main__':

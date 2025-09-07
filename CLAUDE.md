@@ -38,19 +38,23 @@ AWS_SECRET_ACCESS_KEY=your-secret-key
 
 ### Deployment
 ```cmd
-python deploy/deploy_to_pod.py
+# Full deployment and environment setup (run once or after major changes)
+uv run deploy/deploy_to_pod.py
+
+# Quick worker code sync and restart (for development iteration)
+uv run deploy/sync_and_run_worker.py
 ```
 
 ### Monitoring
 ```cmd
 # Monitor worker logs from Windows machine
-python deploy/monitor_logs.py
+uv run deploy/monitor_logs.py
 
 # Monitor system logs from Windows machine
-python deploy/monitor_system.py
+uv run deploy/monitor_system.py
 
 # Check GPU utilization
-python deploy/check_gpu.py
+uv run deploy/check_gpu.py
 ```
 
 ## Dependencies
@@ -61,7 +65,7 @@ uv add boto3 torch transformers soundfile numpy python-dotenv
 ## Technical Details
 
 ### MusicGen Model
-- **facebook/musicgen-medium** (6GB, cached after first run)
+- **facebook/musicgen-large** (12GB, cached after first run)
 - 32kHz WAV output
 - ≤30s single pass, >30s chunked generation
 
@@ -75,20 +79,22 @@ uv add boto3 torch transformers soundfile numpy python-dotenv
 ### Hardware Requirements
 - **RunPod L40S Pod**: NVIDIA L40S (48GB VRAM)
 - **RAM**: 32GB+
-- **Storage**: 100GB+ for model cache
+- **Storage**: 150GB+ for model cache (large model is 12GB)
 
 ### Workflow
 1. Create `.env` file with RUNPOD_HOST and AWS credentials
-2. Deploy and monitor: `python deploy/deploy_and_monitor.py` (configures pod automatically)
-3. Or deploy separately: `python deploy/deploy_to_pod.py` (uploads code + sets environment)
-4. Monitor logs: `python deploy/monitor_logs.py`
+2. Full deployment: `uv run deploy/deploy_to_pod.py` (sets up environment, dependencies, AWS config)
+3. Quick iteration: `uv run deploy/sync_and_run_worker.py` (sync code changes and restart worker)
+4. Monitor logs: `uv run deploy/monitor_logs.py`
 
 ## Important Restrictions
 
 **NEVER execute these commands:**
 - `git` commands (git add, git commit, git push, etc.) - User handles all git operations
 - `runpod` CLI commands - User manages RunPod deployments
-- Deployment Python scripts (`python deploy/*.py`) - User runs scripts manually
+- Deployment scripts (`uv run deploy/*.py`) - User runs scripts manually
 - `ssh` or remote execution commands - User handles all RunPod pod connections
 
 Claude should only read, edit, and analyze code. All deployment, version control, and script execution is handled by the user on Windows.
+
+Do NOT use Emojis in any code, scripts, docs, etc. Just do not use emojis they are trouble for character encoding.

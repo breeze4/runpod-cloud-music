@@ -73,8 +73,8 @@ class MusicGenWorker:
         self._validate_aws_environment()
         
         # Configuration from environment variables (loaded from .env file)
-        self.s3_bucket = os.getenv('MUSICGEN_S3_BUCKET')
-        self.aws_region = os.getenv('AWS_DEFAULT_REGION') or os.getenv('AWS_REGION', 'us-east-1')
+        self.s3_bucket = os.getenv('MUSICGEN_S3_BUCKET', '').strip().strip('\r\n').strip()
+        self.aws_region = (os.getenv('AWS_DEFAULT_REGION') or os.getenv('AWS_REGION', 'us-east-1')).strip().strip('\r\n').strip()
         
         # For hourly cost, use env var or calculate from instance type
         hourly_cost = os.getenv('MUSICGEN_HOURLY_COST')
@@ -121,6 +121,11 @@ class MusicGenWorker:
         missing_vars = []
         for var in required_vars:
             value = os.getenv(var)
+            if value:
+                # Clean environment variables of whitespace and line endings
+                cleaned_value = value.strip().strip('\r\n').strip()
+                os.environ[var] = cleaned_value
+                value = cleaned_value
             if not value:
                 # Try alternative names for region
                 if var == 'AWS_DEFAULT_REGION' and os.getenv('AWS_REGION'):
@@ -277,9 +282,9 @@ class MusicGenWorker:
                 logger.warning("CUDA not available, using CPU (will be very slow)")
             
             # Load model and processor with progress tracking
-            model_name = "facebook/musicgen-medium"
+            model_name = "facebook/musicgen-large"
             logger.info(f"Loading {model_name}...")
-            logger.info("This may take several minutes on first run (downloading ~6GB model)...")
+            logger.info("This may take several minutes on first run (downloading ~12GB model)...")
             
             try:
                 logger.info("Loading processor...")
@@ -360,7 +365,7 @@ class MusicGenWorker:
             logger.warning(f"Could not check disk space: {e}")
         
         # Check if model is already cached
-        model_name = "facebook/musicgen-medium"
+        model_name = "facebook/musicgen-large"
         try:
             from transformers import AutoConfig
             config = AutoConfig.from_pretrained(model_name, local_files_only=True)
@@ -714,9 +719,10 @@ class MusicGenWorker:
         
         total_cost = 0.0
         for result in successful_results:
+            escaped_prompt = result.prompt.replace('"', '""')
             output.append(
                 f'"{result.s3_filename}",'
-                f'"{result.prompt.replace('"', '""')}",'
+                f'"{escaped_prompt}",'
                 f"{result.requested_duration_s},"
                 f"{result.generation_time_s:.2f},"
                 f"{result.estimated_cost_usd:.4f}"
