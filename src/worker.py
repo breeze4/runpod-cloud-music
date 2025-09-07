@@ -549,6 +549,9 @@ class MusicGenWorker:
             
             # Convert to numpy and return
             audio_np = audio_values[0].cpu().numpy()
+            # Ensure audio is in the right shape for soundfile (samples,) for mono
+            if audio_np.ndim > 1:
+                audio_np = audio_np.squeeze()
             return audio_np
         else:
             # Chunked generation for long audio
@@ -572,12 +575,16 @@ class MusicGenWorker:
                 with torch.no_grad():
                     chunk_audio = self.model.generate(**inputs, max_new_tokens=max_new_tokens)
                 
-                chunks.append(chunk_audio[0].cpu().numpy())
+                chunk_np = chunk_audio[0].cpu().numpy()
+                # Ensure chunk is in the right shape for soundfile (samples,) for mono
+                if chunk_np.ndim > 1:
+                    chunk_np = chunk_np.squeeze()
+                chunks.append(chunk_np)
                 remaining_duration -= chunk_duration
                 
                 logger.info(f"Generated chunk: {chunk_duration}s, remaining: {remaining_duration}s")
             
-            # Concatenate all chunks
+            # Concatenate all chunks along the time axis
             full_audio = np.concatenate(chunks, axis=0)
             return full_audio
     
