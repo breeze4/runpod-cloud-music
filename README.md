@@ -69,8 +69,10 @@ uv run utility/s3_music_downloader.py <s3_directory> <destination_directory>
 ```
 
 The utility will create a directory structure like:
+```
 destination_directory/
 └── s3_directory_name/
    ├── file1.wav
    ├── file2.wav
    └── file3.wav
+```
