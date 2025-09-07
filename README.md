@@ -1,4 +1,4 @@
-# MusicGen RunPod Deployment
+# MusicGen on RunPod
 
 Batch music generation using Meta's MusicGen model on RunPod L40S GPU pods.
 
@@ -16,23 +16,7 @@ Requires `uv` to run the `deploy/` code
 
 Install: `uv sync`
 
-### Environment Variables
-
-Create a `.env` file in the project root with these variables:
-
-```bash
-# RunPod Connection
-RUNPOD_HOST=your-pod-hostname
-RUNPOD_USER=root
-
-# AWS S3 Configuration  
-MUSICGEN_S3_BUCKET=your-bucket-name
-AWS_DEFAULT_REGION=us-east-1
-AWS_ACCESS_KEY_ID=your-access-key
-AWS_SECRET_ACCESS_KEY=your-secret-key
-```
-
-### Where to Get Credentials
+## Credentials Required in Environment variables (`.env` file)
 
 **RunPod Connection:**
 - `RUNPOD_HOST`: Get from RunPod console → Your Pod → Connect → SSH
@@ -43,14 +27,7 @@ AWS_SECRET_ACCESS_KEY=your-secret-key
 - `AWS_DEFAULT_REGION`: AWS region where your bucket is located
 - `AWS_ACCESS_KEY_ID` & `AWS_SECRET_ACCESS_KEY`: From AWS IAM console
 
-**Automated Pod Setup:**
-The deployment script automatically configures the pod environment:
-- Reads credentials from your local `.env` file
-- SSHs to the pod and sets environment variables  
-- No manual RunPod console configuration required
-- Environment variables persist for the pod session
-
-## Main Workflows
+## Workflows
 
 **First-time setup (complete):**
 1. `uv run deploy/deploy_code.py`
