@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "WebFetch(domain:docs.runpod.io)"
+      "WebFetch(domain:docs.runpod.io)",
+      "Bash(ssh:*)"
     ],
     "deny": [],
     "ask": []

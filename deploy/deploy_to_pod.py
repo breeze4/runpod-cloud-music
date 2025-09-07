@@ -183,35 +183,45 @@ def setup_environment():
     echo "Verifying uv installation..." &&
     which uv &&
     uv --version &&
+    echo "Setting up Python environment with dependencies..." &&
     if [ -f pyproject.toml ]; then
-        echo "Setting up project with uv sync..." &&
-        uv sync
+        echo "Found pyproject.toml, using uv sync..." &&
+        uv sync --verbose
     else
-        echo "Creating new uv project..." &&
+        echo "No pyproject.toml found, creating new project..." &&
         uv init --no-readme &&
+        echo "Adding required dependencies..." &&
         uv add boto3 torch transformers soundfile numpy python-dotenv
     fi &&
+    echo "Verifying installed packages..." &&
+    uv run python -c "import boto3, torch, transformers, soundfile, numpy; print('All packages imported successfully')" &&
     echo "Testing Python environment..." &&
     uv run python --version
     '''
     
     try:
         print("Running comprehensive environment setup...")
+        print("This may take several minutes for downloading and installing dependencies...")
+        
+        # Run without capturing output so we can see real-time progress
         result = subprocess.run([
             'ssh', '-p', port, f'{user}@{host}', 
             setup_command
-        ], capture_output=True, text=True, timeout=300)  # 5 minute timeout for dependencies
+        ], timeout=300)  # 5 minute timeout for dependencies
         
         if result.returncode != 0:
-            print(f"WARNING: Environment setup had issues:")
-            print(f"STDOUT: {result.stdout}")
-            print(f"STDERR: {result.stderr}")
-            # Don't fail completely, continue with verification
+            print(f"WARNING: Environment setup had issues (exit code: {result.returncode})")
+            # Run a quick verification to see what worked
+            print("Running verification check...")
+            verify_result = subprocess.run([
+                'ssh', '-p', port, f'{user}@{host}',
+                'cd /workspace && export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH" && which uv && ls -la'
+            ], capture_output=True, text=True)
+            print(f"Verification output: {verify_result.stdout}")
+            if verify_result.stderr:
+                print(f"Verification errors: {verify_result.stderr}")
         else:
             print("SUCCESS: Environment setup completed successfully")
-        
-        print("Environment setup output:")
-        print(result.stdout)
         
         print("SUCCESS: Python environment setup completed")
         return True
