@@ -161,6 +161,7 @@ def start_worker():
         ], capture_output=True, text=True, timeout=10)
         time.sleep(2)
         
+        print("Starting worker in background...")
         # Start worker in background
         start_command = '''
 cd /workspace && 
@@ -175,7 +176,7 @@ echo "Worker started with PID $(cat worker.pid)"
             'ssh', '-o', 'StrictHostKeyChecking=no',
             '-p', port,
             f'{user}@{host}', start_command
-        ], capture_output=True, text=True, timeout=30)
+        ], capture_output=True, text=True, timeout=300)
         
         if result.returncode == 0:
             print("SUCCESS: MusicGen worker started")

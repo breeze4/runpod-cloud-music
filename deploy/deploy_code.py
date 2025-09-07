@@ -103,36 +103,26 @@ def sync_code():
         print("Preparing workspace directory...")
         subprocess.run([
             'ssh', '-p', port, f'{user}@{host}',
-            'rm -rf /workspace/src /workspace/prompts.txt /workspace/pyproject.toml 2>/dev/null || true'
+            'rm -rf /workspace/src /workspace/prompts.txt /workspace/pyproject.toml 2>/dev/null || true && mkdir -p /workspace'
         ], check=True)
         
         for item in existing_items:
             print(f"Uploading {item}...")
             if os.path.isdir(item):
-                # For directories, create the target directory first, then upload contents
-                target_dir = f"/workspace/{os.path.basename(item)}"
-                print(f"  Creating target directory: {target_dir}")
+                # For directories, create target directory and upload contents
+                target_dir = f"/workspace/{os.path.basename(item.rstrip('/'))}"
                 subprocess.run([
                     'ssh', '-p', port, f'{user}@{host}',
                     f'mkdir -p {target_dir}'
                 ], check=True)
                 
-                # Upload directory contents
+                # Upload directory contents using scp -r with /* to get contents
                 item_path = item.rstrip('/\\')
-                
-                for subitem in glob.glob(f"{item_path}/*"):
-                    if os.path.isfile(subitem):
-                        cmd = [
-                            'scp', '-P', port, '-o', 'StrictHostKeyChecking=no',
-                            subitem, f'{user}@{host}:{target_dir}/'
-                        ]
-                        subprocess.run(cmd, check=True)
-                    elif os.path.isdir(subitem):
-                        cmd = [
-                            'scp', '-r', '-P', port, '-o', 'StrictHostKeyChecking=no',
-                            subitem, f'{user}@{host}:{target_dir}/'
-                        ]
-                        subprocess.run(cmd, check=True)
+                cmd = [
+                    'scp', '-r', '-P', port, '-o', 'StrictHostKeyChecking=no',
+                    f'{item_path}/*', f'{user}@{host}:{target_dir}/'
+                ]
+                subprocess.run(cmd, check=True)
             else:
                 # For files, upload directly to workspace
                 cmd = [
