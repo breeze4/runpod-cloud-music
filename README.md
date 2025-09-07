@@ -10,28 +10,11 @@ Batch music generation using Meta's MusicGen model on RunPod L40S GPU pods.
    # Edit .env with your credentials
    ```
 
+## Setup 
 
-## Setup Requirements
+Requires `uv` to run the `deploy/` code
 
-### Local Development Setup
-
-1. **Install UV (Python Package Manager)**
-   
-   **Windows:**
-   ```powershell
-   powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
-   ```
-   
-   **Linux/macOS:**
-   ```bash
-   curl -LsSf https://astral.sh/uv/install.sh | sh
-   ```
-
-2. **Install Dependencies**
-   ```bash
-   uv sync
-   ```
-
+Install: `uv sync`
 
 ### Environment Variables
 
@@ -79,11 +62,6 @@ The deployment script automatically configures the pod environment:
 1. Edit `src/worker.py` locally
 2. `uv run deploy/deploy_code.py && uv run deploy/run_worker.py`
 
-**Environment changes (medium):**
-1. `uv run deploy/install_dependencies.py`
-2. `uv run deploy/validate_environment.py`
-3. `uv run deploy/run_worker.py`
-
 ## Technical Details
 
 ### Model
@@ -106,8 +84,3 @@ relaxing acoustic guitar melody ; 60 ; acoustic_relax
 - Uploaded to S3 bucket, with a directory for this run of the prompt
 - Deterministic: `{base_name}_{hash8}.wav`
 - 32kHz WAV format
-- Hash from: prompt + duration + filename
-- Idempotent: skips if file exists in S3
-
-
-## Development Workflow Summary
