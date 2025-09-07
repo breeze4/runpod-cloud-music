@@ -79,61 +79,86 @@ uv add boto3 torch transformers soundfile numpy python-dotenv
 
 ## Main Workflows
 
-### 1. Deploy + Run + Monitor (Recommended)
+### 1. Phase-by-Phase Deployment (Recommended for First Time)
 
-Single command that deploys code, starts the worker, and shows live logs:
-
-```cmd
-uv run python deploy/deploy_and_monitor.py
-```
-
-This will:
-- Deploy your code to the RunPod pod
-- Start the MusicGen worker
-- Stream worker logs to your terminal
-- Show completion report when done
-
-### 2. Deploy Only
-
-Deploy code without running or monitoring:
+Run each phase individually for better control and debugging:
 
 ```cmd
-uv run python deploy/deploy_to_pod.py
+# Phase 1: Deploy source code to pod
+uv run deploy/deploy_code.py
+
+# Phase 2: Install dependencies and configure environment  
+uv run deploy/install_dependencies.py
+
+# Phase 3: Validate environment (AWS, GPU, dependencies)
+uv run deploy/validate_environment.py
+
+# Phase 4: Run worker with monitoring
+uv run deploy/run_worker.py
 ```
 
-Then manually SSH to pod and run:
-```bash
-ssh root@your-pod-hostname -p YOUR_PORT
-cd /workspace && uv run src/worker.py
-```
+**Use this workflow when:**
+- Setting up for the first time
+- Need to debug specific deployment issues
+- Want to verify each step independently
 
-### 3. Quick Development Iteration
+### 2. Complete Deployment (All Phases)
 
-For development iteration when the pod environment is already set up:
+Single command that runs all phases automatically:
 
 ```cmd
-uv run python deploy/sync_and_run_worker.py
+uv run deploy/deploy_to_pod.py
 ```
 
-This syncs code changes to the pod and restarts the worker without full environment setup.
+**Use this workflow when:**
+- Environment is working and you want full reset
+- Major changes that require complete redeployment
 
-### 4. Monitor Only
+### 3. Worker Development Iteration (Fastest)
 
-Monitor logs from a worker that's already running:
+For iterating on worker code without reinstalling environment:
 
 ```cmd
-# Worker logs (recommended)
-uv run python deploy/monitor_logs.py
-
-# System logs
-uv run python deploy/monitor_system.py
-
-# Pod environment check
-uv run python deploy/check_pod.py
-
-# Validate deployment (AWS, GPU, dependencies)
-uv run python deploy/validate_deployment.py
+uv run deploy/sync_and_run_worker.py
 ```
+
+**Use this workflow when:**
+- Only worker code (`src/worker.py`) has changed
+- Pod environment is already set up correctly
+- Want fastest deployment cycle
+
+This syncs only source code and restarts the worker - no environment reinstall.
+
+### 4. Worker Management
+
+Control and monitor running workers:
+
+```cmd
+# Start worker and monitor startup
+uv run deploy/run_worker.py
+
+# View real-time logs
+uv run deploy/run_worker.py logs
+
+# Check worker status
+uv run deploy/run_worker.py status  
+
+# Stop worker
+uv run deploy/run_worker.py stop
+```
+
+### 5. Environment Validation Only
+
+Verify environment without running worker:
+
+```cmd
+uv run deploy/validate_environment.py
+```
+
+**Use this to check:**
+- AWS credentials and S3 access
+- GPU and PyTorch integration  
+- All Python dependencies
 
 ## Input Format
 
@@ -168,6 +193,26 @@ Generated audio files are uploaded to your S3 bucket with:
 - Test S3 access: worker validates S3 connectivity at startup
 
 **Generation Issues:**
-- Monitor logs with `python deploy/monitor_logs.py`
-- Validate deployment with `python deploy/validate_deployment.py`
+- Monitor logs with `uv run deploy/run_worker.py logs`
+- Validate environment with `uv run deploy/validate_environment.py`
 - Verify model downloads successfully (12GB for musicgen-large)
+
+## Development Workflow Summary
+
+**First-time setup (complete):**
+1. `uv run deploy/deploy_code.py`
+2. `uv run deploy/install_dependencies.py` 
+3. `uv run deploy/validate_environment.py`
+4. `uv run deploy/run_worker.py`
+
+**Worker code iteration (fast):**
+1. Edit `src/worker.py` locally
+2. `uv run deploy/sync_and_run_worker.py`
+
+**Environment changes (medium):**
+1. `uv run deploy/install_dependencies.py`
+2. `uv run deploy/validate_environment.py`
+3. `uv run deploy/run_worker.py`
+
+**Nuclear option (slow):**
+1. `uv run deploy/deploy_to_pod.py` (all phases)

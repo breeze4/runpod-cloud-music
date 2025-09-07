@@ -78,20 +78,59 @@ python deploy/check_gpu.py
 - **Storage**: 100GB+ for model cache
 - **Base**: Python 3.8+ container
 
-### Deployment Steps
-1. Create `.env` file with RUNPOD_HOST and AWS credentials
-2. Deploy: `python deploy/deploy_to_pod.py` (uploads code + configures environment)
-3. Monitor: `python deploy/monitor_logs.py`
-4. Execute: SSH to pod and run `cd /workspace && uv run src/worker.py`
+### 4-Phase Deployment Workflow
 
-### Monitoring Commands
+#### Phase 1: Deploy Code
 ```cmd
-# Deploy and monitor in one command
-python deploy/deploy_and_monitor.py
-
-# Monitor worker logs live
-python deploy/monitor_logs.py
-
-# Monitor system logs live
-python deploy/monitor_system.py
+uv run deploy/deploy_code.py
 ```
+- Upload source code, prompts.txt, and pyproject.toml to pod
+- Basic connectivity verification
+- No dependency installation or environment setup
+
+#### Phase 2: Install Dependencies
+```cmd
+uv run deploy/install_dependencies.py
+```
+- Install uv package manager
+- Set up Python environment with required packages
+- Configure AWS environment variables
+- Create S3 bucket if needed
+
+#### Phase 3: Validate Environment
+```cmd
+uv run deploy/validate_environment.py
+```
+- Check AWS environment variables and S3 connectivity
+- Verify GPU/PyTorch integration
+- Test all dependencies
+- Comprehensive environment validation
+
+#### Phase 4: Run Worker
+```cmd
+# Start worker
+uv run deploy/run_worker.py
+
+# Monitor worker
+uv run deploy/run_worker.py logs
+
+# Check status
+uv run deploy/run_worker.py status
+
+# Stop worker
+uv run deploy/run_worker.py stop
+```
+
+### Complete Deployment (All Phases)
+```cmd
+# Original monolithic script (still available)
+uv run deploy/deploy_to_pod.py
+
+# Quick code sync and restart (for development)
+uv run deploy/sync_and_run_worker.py
+```
+
+### Prerequisites
+1. Create `.env` file with RUNPOD_HOST and AWS credentials
+2. Ensure SSH keys are configured for RunPod access
+3. Have prompts.txt ready for worker processing

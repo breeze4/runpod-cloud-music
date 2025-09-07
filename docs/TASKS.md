@@ -1,16 +1,71 @@
-# RunPod L40S Deployment Tasks
+# Simplified RunPod Deployment Scripts - Task List
 
-Implementation tasks for MusicGen RunPod deployment.
+## Overview
+Simplify the deployment scripts into separate phases: deploy code, install dependencies, validate environment, and run worker.
+
+## Tasks
+
+### Phase 1: Core Script Development
+1. **Create `deploy/deploy_code.py`** - Extract code deployment logic from existing script
+   - SSH connectivity check
+   - Upload source code, prompts.txt, pyproject.toml
+   - Basic verification of uploaded files
+   - No dependency installation or environment setup
+
+2. **Create `deploy/install_dependencies.py`** - Extract dependency installation logic
+   - Install uv package manager
+   - Set up Python environment with required packages
+   - Configure AWS environment variables
+   - Create S3 bucket if needed
+   - Verify package installation
+
+3. **Update `deploy/validate_environment.py`** - Rename and enhance existing validation script
+   - Rename from `validate_deployment.py` to `validate_environment.py`
+   - Check AWS environment variables and S3 connectivity
+   - Verify GPU/PyTorch integration
+   - Test all dependencies
+   - Comprehensive environment validation
+
+4. **Create `deploy/run_worker.py`** - Extract worker execution and monitoring logic
+   - Start the MusicGen worker process
+   - Monitor initial startup for errors
+   - Provide real-time log tailing capability
+   - Handle worker lifecycle (start/stop/status)
+
+### Phase 2: Documentation and Cleanup
+5. **Update documentation** - Update SPEC.md and CLAUDE.md with new workflow
+   - Update SPEC.md deployment section with 4-phase workflow
+   - Update CLAUDE.md essential commands section
+   - Document the new script usage patterns
+
+6. **Remove obsolete scripts** - Clean up old monitoring and combined scripts
+   - Remove `deploy/monitor_logs.py`
+   - Remove `deploy/monitor_system.py` 
+   - Remove `deploy/deploy_and_monitor.py`
+   - Keep `deploy_to_pod.py` and `sync_and_run_worker.py` for reference during transition
+
+### Phase 3: Integration and Testing
+7. **Test the new workflow** - Ensure each phase works independently and in sequence
+   - Test each script individually
+   - Test complete workflow sequence
+   - Verify error handling and rollback scenarios
+
+## Success Criteria
+- Each script can be run independently
+- Scripts build incrementally (code → deps → validation → worker)  
+- After each phase, the system remains in a stable state
+- Clear error messages and guidance for each phase
+- Documentation updated to reflect new workflow
+
+---
+
+# Previous Implementation Status (Completed)
 
 ## 🎉 IMPLEMENTATION STATUS: CORE TASKS COMPLETED
 ✅ **Task 1: Comprehensive startup validation** - All validation checks implemented  
 ✅ **Task 2: Automated deployment scripts** - Full deployment and monitoring suite created  
 ✅ **Task 3: UV project setup** - Project configuration and environment template completed  
-✅ **Task 4: Enhanced batch reporting** - Detailed completion reporting with full metrics  
-
-**Remaining tasks** (optional/documentation):
-- Task 5: Deployment documentation  
-- Task 6: Test validation files
+✅ **Task 4: Enhanced batch reporting** - Detailed completion reporting with full metrics
 
 ## Workflow
 1. Set environment variables in RunPod pod configuration

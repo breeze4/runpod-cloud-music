@@ -36,25 +36,43 @@ AWS_SECRET_ACCESS_KEY=your-secret-key
 - Automatically configures pod environment variables via SSH
 - Worker uses boto3 automatic credential detection
 
-### Deployment
+### 4-Phase Deployment
+```cmd
+# Phase 1: Deploy source code
+uv run deploy/deploy_code.py
+
+# Phase 2: Install dependencies and configure environment
+uv run deploy/install_dependencies.py
+
+# Phase 3: Validate environment (AWS, GPU, dependencies)
+uv run deploy/validate_environment.py
+
+# Phase 4: Run worker with monitoring
+uv run deploy/run_worker.py
+```
+
+### Worker Management
+```cmd
+# Start worker and monitor startup
+uv run deploy/run_worker.py
+
+# Monitor worker logs in real-time
+uv run deploy/run_worker.py logs
+
+# Check worker status
+uv run deploy/run_worker.py status
+
+# Stop worker
+uv run deploy/run_worker.py stop
+```
+
+### Complete Deployment (All Phases)
 ```cmd
 # Full deployment and environment setup (run once or after major changes)
 uv run deploy/deploy_to_pod.py
 
 # Quick worker code sync and restart (for development iteration)
 uv run deploy/sync_and_run_worker.py
-```
-
-### Monitoring
-```cmd
-# Monitor worker logs from Windows machine
-uv run deploy/monitor_logs.py
-
-# Monitor system logs from Windows machine
-uv run deploy/monitor_system.py
-
-# Check GPU utilization
-uv run deploy/check_gpu.py
 ```
 
 ## Dependencies
@@ -83,9 +101,13 @@ uv add boto3 torch transformers soundfile numpy python-dotenv
 
 ### Workflow
 1. Create `.env` file with RUNPOD_HOST and AWS credentials
-2. Full deployment: `uv run deploy/deploy_to_pod.py` (sets up environment, dependencies, AWS config)
-3. Quick iteration: `uv run deploy/sync_and_run_worker.py` (sync code changes and restart worker)
-4. Monitor logs: `uv run deploy/monitor_logs.py`
+2. Phase-based deployment:
+   - `uv run deploy/deploy_code.py` (upload source code)
+   - `uv run deploy/install_dependencies.py` (setup environment)
+   - `uv run deploy/validate_environment.py` (verify setup)
+   - `uv run deploy/run_worker.py` (run and monitor worker)
+3. Or full deployment: `uv run deploy/deploy_to_pod.py` (all phases combined)
+4. Quick iteration: `uv run deploy/sync_and_run_worker.py` (code sync and restart)
 
 ## Important Restrictions
 
